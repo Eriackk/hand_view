@@ -28,9 +28,8 @@
     </div>
 
     <div class="hint">
-      手势说明：仅食指伸直=画笔（红色）；食指+中指伸直=区域橡皮擦。<br>
-      新增：低速悬停约 140ms 自动“抬笔停写”；达到合适速度且稳定数帧自动“落笔继续”。<br>
-      说明：全程本地运行，不上传视频；页面做了镜像显示；如果画面比例不对，刷新一次即可重新自适应。
+      手势说明：食指尖+中指尖“捏近”=落笔写字；两指“分开”=抬笔移动；四指都弯曲（握拳）=区域橡皮擦（擦头用食指尖）。<br>
+      说明：全程本地运行，不上传视频；页面镜像显示；如比例不对刷新一次重新自适应。
     </div>
   </div>
 
@@ -63,32 +62,34 @@
     let handLandmarker = null;
     let drawingUtils = null;
 
-    // 画板状态
-    const PEN_COLOR = "#ff3b30"; // 固定红色
+    // 画板参数
+    const PEN_COLOR = "#ff3b30";
     const PEN_WIDTH = 7;
-    const ERASER_RADIUS = 26;    // 区域橡皮擦半径
-    const SMOOTH_ALPHA = 0.45;   // 越大越跟手，越小越稳
 
-    let smoothPt = null;         // 平滑后的像素坐标
-    let prevPt = null;           // 上一笔尖像素坐标
-    let lastSeenTs = 0;          // 最近一次检测到手的时间戳（用于抗掉帧）
-    const HOLD_MS = 180;         // 短暂丢手时继续“黏住”笔尖，减少断笔
+    // 橡皮擦参数（更大）
+    const ERASER_RADIUS = 42;   // 原 26 -> 42
+    const ERASER_STEP = 6;      // 半径更大时步长也加大，性能更稳
 
-    // ====== 停笔/落笔状态机（新增）======
-    let penDown = false;         // 当前是否落笔（true 才允许画/擦）
-    let lastPtForSpeed = null;   // 用于计算速度的上一点
-    let lastSpeedTs = 0;         // 上次速度采样时间
-    let slowSinceTs = 0;         // 低速开始计时（用于判定停笔）
-    let downStableCount = 0;     // 落笔稳定计数（防止一抖就落笔）
+    // 平滑（你原来的留着，后面想“更像写字”再改）
+    const SMOOTH_ALPHA = 0.45;
 
-    // 速度阈值（需要你根据实际手感微调）
-    const STOP_V_PX_PER_MS = 0.04;   // 低于这个速度并持续 => 抬笔（约 40px/s）
-    const STOP_HOLD_MS = 140;        // 低速持续多久算“停笔”
-    const DOWN_V_MIN = 0.06;         // 进入落笔的最小速度（太慢多半是悬停）
-    const DOWN_V_MAX = 1.50;         // 进入落笔的最大速度（太快多半是挥手/移动）
-    const DOWN_STABLE_FRAMES = 3;    // 满足速度条件连续多少帧才落笔
+    // 抗丢手
+    let smoothPt = null;
+    let prevPt = null;
+    let lastSeenTs = 0;
+    const HOLD_MS = 180;
 
-    // 计算视频绘制矩形：保持比例不拉伸（contain）
+    // 交互状态机
+    let penDown = false;
+
+    // 捏合阈值（滞回 + 去抖）
+    // 用“捏合距离 / 手掌宽”做归一化，适配不同远近
+    const PINCH_ON = 0.23;      // 小于它：判定落笔
+    const PINCH_OFF = 0.35;     // 大于它：判定抬笔
+    const SWITCH_FRAMES = 3;    // 连续满足 N 帧才切换（debounce）
+    let downCount = 0;
+    let upCount = 0;
+
     function calcContainRect(srcW, srcH, dstW, dstH) {
       const srcAR = srcW / srcH;
       const dstAR = dstW / dstH;
@@ -107,7 +108,6 @@
       return { x, y, w, h };
     }
 
-    // canvas 尺寸与面板比例自适应视频，避免“压缩整个人”
     function resizeToVideo() {
       const vw = video.videoWidth || 1280;
       const vh = video.videoHeight || 720;
@@ -119,7 +119,7 @@
       setRes(`${vw}×${vh}`);
     }
 
-    // 归一化点 -> 像素点（注意我们做镜像显示，所以 x 需要镜像）
+    // 归一化点 -> 像素点（镜像显示，所以 x 镜像）
     function normToPixel(pt, w, h) {
       return { x: (1 - pt.x) * w, y: pt.y * h };
     }
@@ -134,37 +134,21 @@
       return smoothPt;
     }
 
-    // ====== 计算指尖速度 v（px/ms）（新增）======
-    function calcSpeedPxPerMs(pt, now) {
-      if (!lastPtForSpeed) {
-        lastPtForSpeed = { x: pt.x, y: pt.y };
-        lastSpeedTs = now;
-        return 0;
-      }
-      const dt = Math.max(1, now - lastSpeedTs); // ms
-      const dx = pt.x - lastPtForSpeed.x;
-      const dy = pt.y - lastPtForSpeed.y;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const v = dist / dt;
-      lastPtForSpeed.x = pt.x;
-      lastPtForSpeed.y = pt.y;
-      lastSpeedTs = now;
-      return v;
-    }
-
-    // 画笔：做“插值补点”，解决短短续续
     function drawLineInterpolated(from, to) {
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
+
       const step = 3;
       const n = Math.max(1, Math.floor(dist / step));
+
       dctx.save();
       dctx.globalCompositeOperation = "source-over";
       dctx.strokeStyle = PEN_COLOR;
       dctx.lineWidth = PEN_WIDTH;
       dctx.lineCap = "round";
       dctx.lineJoin = "round";
+
       dctx.beginPath();
       dctx.moveTo(from.x, from.y);
       for (let i = 1; i <= n; i++) {
@@ -175,16 +159,18 @@
       dctx.restore();
     }
 
-    // 区域橡皮擦：沿着移动路径“擦一条带”
     function eraseAlong(from, to) {
       const dx = to.x - from.x;
       const dy = to.y - from.y;
       const dist = Math.sqrt(dx*dx + dy*dy);
-      const step = 4;
+
+      const step = ERASER_STEP;
       const n = Math.max(1, Math.floor(dist / step));
+
       dctx.save();
       dctx.globalCompositeOperation = "destination-out";
       dctx.fillStyle = "rgba(0,0,0,1)";
+
       for (let i = 0; i <= n; i++) {
         const t = i / n;
         const x = from.x + dx * t;
@@ -196,27 +182,66 @@
       dctx.restore();
     }
 
-    // 手指伸直判定（适合“手指大致朝上”的交互姿态）
+    // 手指伸直判定（你原来的逻辑复用）
     function fingerExtended(lm, mcp, pip, tip) {
       return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
     }
 
-    // 判定“仅食指伸直”：index=true，middle/ring/pinky=false（拇指不强约束）
-    function isOnlyIndex(lm) {
+    // “握拳/四指弯曲”判定：index/middle/ring/pinky 全都不伸直
+    function isFist(lm) {
       const index = fingerExtended(lm, 5, 6, 8);
       const middle = fingerExtended(lm, 9, 10, 12);
       const ring = fingerExtended(lm, 13, 14, 16);
       const pinky = fingerExtended(lm, 17, 18, 20);
-      return index && !middle && !ring && !pinky;
+      return !index && !middle && !ring && !pinky;
     }
 
-    // 判定“食指+中指伸直”：index=true middle=true ring/pinky=false
-    function isIndexMiddle(lm) {
-      const index = fingerExtended(lm, 5, 6, 8);
-      const middle = fingerExtended(lm, 9, 10, 12);
-      const ring = fingerExtended(lm, 13, 14, 16);
-      const pinky = fingerExtended(lm, 17, 18, 20);
-      return index && middle && !ring && !pinky;
+    // 计算“捏合强度”：两指尖距离 / 手掌宽（5 到 17）
+    function pinchRatio(lm) {
+      const dx = lm[8].x - lm[12].x;
+      const dy = lm[8].y - lm[12].y;
+      const pinchDist = Math.hypot(dx, dy);
+
+      const pdx = lm[5].x - lm[17].x;
+      const pdy = lm[5].y - lm[17].y;
+      const palmWidth = Math.max(1e-6, Math.hypot(pdx, pdy));
+
+      return pinchDist / palmWidth;
+    }
+
+    // 更新 penDown（滞回 + 去抖）
+    function updatePenDown(ratio) {
+      if (!penDown) {
+        // 想落笔：ratio 必须连续小于 PINCH_ON
+        if (ratio < PINCH_ON) {
+          downCount++;
+          if (downCount >= SWITCH_FRAMES) {
+            penDown = true;
+            downCount = 0;
+            upCount = 0;
+            // 落笔瞬间重置 prevPt，避免从上一处连线
+            prevPt = null;
+            smoothPt = null;
+          }
+        } else {
+          downCount = 0;
+        }
+      } else {
+        // 想抬笔：ratio 必须连续大于 PINCH_OFF
+        if (ratio > PINCH_OFF) {
+          upCount++;
+          if (upCount >= SWITCH_FRAMES) {
+            penDown = false;
+            downCount = 0;
+            upCount = 0;
+            prevPt = null;
+            smoothPt = null;
+          }
+        } else {
+          upCount = 0;
+        }
+      }
+      return penDown;
     }
 
     async function initMediaPipe() {
@@ -261,23 +286,13 @@
       setMode("等待手势");
     }
 
-    function resetPenState() {
-      penDown = false;
-      prevPt = null;
-      smoothPt = null;
-      slowSinceTs = 0;
-      downStableCount = 0;
-      lastPtForSpeed = null;
-      lastSpeedTs = 0;
-    }
-
     function loop() {
       if (video.videoWidth && video.videoHeight) resizeToVideo();
 
       const W = viewCanvas.width;
       const H = viewCanvas.height;
 
-      // 1) 背景黑色
+      // 1) 背景黑
       vctx.save();
       vctx.clearRect(0, 0, W, H);
       vctx.fillStyle = "#000";
@@ -298,9 +313,10 @@
 
       if (result.landmarks && result.landmarks.length > 0) {
         lastSeenTs = now;
+
         const lm = result.landmarks[0];
 
-        // 骨架叠加在 viewCanvas（镜像一致）
+        // 骨架叠加（可保留）
         vctx.save();
         vctx.translate(W, 0);
         vctx.scale(-1, 1);
@@ -308,74 +324,43 @@
         drawingUtils.drawLandmarks(lm, { radius: 3 });
         vctx.restore();
 
-        const drawOn = isOnlyIndex(lm);
-        const eraseOn = isIndexMiddle(lm);
+        const fist = isFist(lm);
+        const ratio = pinchRatio(lm);
+        const down = updatePenDown(ratio);
 
-        // 食指尖当笔尖
+        // 食指尖当操作点（写/擦都用它）
         const tipPx = normToPixel(lm[8], W, H);
         const sp = smoothPoint(tipPx);
 
-        // 速度（用于停笔/落笔）
-        const v = calcSpeedPxPerMs(sp, now);
+        if (fist) {
+          mode = "区域橡皮擦（握拳）";
+          // 进入擦除时，强制抬笔状态，避免擦除结束后突然连线
+          penDown = false;
+          downCount = 0;
+          upCount = 0;
 
-        // 手势不在绘制/擦除：强制抬笔（纸感上等价于离纸）
-        if (!drawOn && !eraseOn) {
-          resetPenState();
-          setMode("抬笔（非绘制姿态）");
-          rafId = requestAnimationFrame(loop);
-          return;
-        }
-
-        // ====== 落笔逻辑：满足速度窗口并稳定数帧才落笔 ======
-        const inDownWindow = (v >= DOWN_V_MIN) && (v <= DOWN_V_MAX);
-        if (!penDown) {
-          if (inDownWindow) downStableCount++;
-          else downStableCount = 0;
-          if (downStableCount >= DOWN_STABLE_FRAMES) {
-            penDown = true;
-            slowSinceTs = 0;
-            prevPt = { x: sp.x, y: sp.y }; // 落笔起点，避免突然拉线
-          }
-        }
-
-        // ====== 停笔逻辑：低速持续 => 抬笔 ======
-        if (penDown) {
-          if (v < STOP_V_PX_PER_MS) {
-            if (!slowSinceTs) slowSinceTs = now;
-            if (now - slowSinceTs > STOP_HOLD_MS) {
-              resetPenState();
-              setMode(drawOn ? "画笔（停笔抬起）" : "橡皮擦（停笔抬起）");
-              rafId = requestAnimationFrame(loop);
-              return;
-            }
-          } else {
-            slowSinceTs = 0;
-          }
-        }
-
-        // ====== 执行绘制/擦除：只在 penDown=true 时发生 ======
-        if (drawOn) {
-          mode = penDown ? "画笔（落笔）" : "画笔（未落笔）";
-          if (penDown) {
-            if (!prevPt) prevPt = { x: sp.x, y: sp.y };
-            drawLineInterpolated(prevPt, sp);
-            prevPt = { x: sp.x, y: sp.y };
-          } else {
-            prevPt = null;
-          }
-        } else if (eraseOn) {
-          mode = penDown ? "区域橡皮擦（落笔）" : "区域橡皮擦（未落笔）";
-          if (penDown) {
-            if (!prevPt) prevPt = { x: sp.x, y: sp.y };
-            eraseAlong(prevPt, sp);
-            prevPt = { x: sp.x, y: sp.y };
-          } else {
-            prevPt = null;
-          }
+          if (!prevPt) prevPt = { x: sp.x, y: sp.y };
+          eraseAlong(prevPt, sp);
+          prevPt = { x: sp.x, y: sp.y };
+        } else if (down) {
+          mode = `写字（捏合落笔）`;
+          if (!prevPt) prevPt = { x: sp.x, y: sp.y };
+          drawLineInterpolated(prevPt, sp);
+          prevPt = { x: sp.x, y: sp.y };
+        } else {
+          mode = "抬笔移动（两指分开）";
+          prevPt = null;
+          smoothPt = null;
         }
       } else {
-        // 没检测到手：短时间 HOLD 以减少断笔；超过就抬笔并重置状态机
-        if (now - lastSeenTs > HOLD_MS) resetPenState();
+        // 没检测到手：短暂 HOLD；超时抬笔
+        if (now - lastSeenTs > HOLD_MS) {
+          prevPt = null;
+          smoothPt = null;
+          penDown = false;
+          downCount = 0;
+          upCount = 0;
+        }
         mode = "未检测到手";
       }
 
