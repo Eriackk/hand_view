@@ -1,170 +1,346 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Camera HD + Aspect + Canvas Sync</title>
+  <title>hand_view_whiteboard</title>
   <style>
-    :root { color-scheme: dark; }
-    body { margin: 0; height: 100vh; display: grid; place-items: center; background: #000; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    .stage {
-      position: relative;
-      width: min(92vw, 1100px);
-      aspect-ratio: 16 / 9;
-      background: #111;
-      border-radius: 10px;
-      overflow: hidden;
-    }
-    video, canvas {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: contain; /* 关键：保持比例，不拉伸 */
-    }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 18px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .panel { position: relative; width: 100%; aspect-ratio: 16/9; background: #111; border-radius: 12px; overflow: hidden; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     .hud {
-      position: absolute;
-      left: 10px;
-      bottom: 10px;
-      padding: 8px 10px;
-      background: rgba(0,0,0,.55);
-      border-radius: 8px;
-      font-size: 13px;
-      line-height: 1.35;
-      backdrop-filter: blur(6px);
-      max-width: calc(100% - 20px);
+      position: relative;
+      margin-top: 10px;
+      color: #333;
+      font-size: 14px;
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+      align-items: center;
     }
-    .btn {
-      position: absolute;
-      right: 10px;
-      bottom: 10px;
-      padding: 8px 10px;
-      background: rgba(255,255,255,.12);
-      border: 1px solid rgba(255,255,255,.18);
-      color: #fff;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .btn:active { transform: translateY(1px); }
+    .badge { padding: 6px 10px; border: 1px solid #ddd; border-radius: 999px; background: #fff; }
+    .hint { margin-top: 6px; color: #666; font-size: 13px; line-height: 1.5; }
   </style>
 </head>
 <body>
-  <div class="stage">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-    <div class="hud" id="hud">状态：初始化…</div>
-    <button class="btn" id="switchBtn" title="切换前后摄像头（若设备支持）">切换摄像头</button>
+  <div class="wrap">
+    <div class="panel">
+      <canvas id="viewCanvas"></canvas>
+      <canvas id="drawCanvas"></canvas>
+    </div>
+    <div class="hud">
+      <span class="badge" id="status">状态：初始化中...</span>
+      <span class="badge" id="mode">模式：--</span>
+      <span class="badge" id="color">颜色：--</span>
+      <span class="badge" id="tips">手势：捏合=画/停，五指张开=橡皮擦，OK=换颜色</span>
+    </div>
+    <div class="hint">说明：首次打开会弹出摄像头权限请求；画面做了镜像（更符合自拍）；如果你想清空画板，刷新页面即可（后续也可以加“清空”手势/按钮）。</div>
   </div>
 
-  <script>
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('overlay');
-    const ctx = canvas.getContext('2d');
-    const hud = document.getElementById('hud');
-    const switchBtn = document.getElementById('switchBtn');
+  <video id="video" playsinline style="display:none;"></video>
+
+  <script type="module">
+    const viewCanvas = document.getElementById("viewCanvas");
+    const drawCanvas = document.getElementById("drawCanvas");
+    const vctx = viewCanvas.getContext("2d");
+    const dctx = drawCanvas.getContext("2d");
+    const video = document.getElementById("video");
+
+    const statusEl = document.getElementById("status");
+    const modeEl = document.getElementById("mode");
+    const colorEl = document.getElementById("color");
+
+    function setStatus(t) { statusEl.textContent = "状态：" + t; }
+    function setMode(t) { modeEl.textContent = "模式：" + t; }
+    function setColor(t) { colorEl.textContent = "颜色：" + t; }
 
     let stream = null;
-    let facingMode = 'user'; // 'user' 前置, 'environment' 后置（PC多数只有一个，切换可能无效）
+    let rafId = null;
 
-    function setHud(text) { hud.textContent = text; }
+    // MediaPipe Tasks Web（动态加载，避免 CDN 失败导致整页脚本失效）
+    let vision = null;
+    let FilesetResolver = null;
+    let HandLandmarker = null;
+    let DrawingUtils = null;
+    let handLandmarker = null;
+    let drawingUtils = null;
 
-    async function stopStream() {
-      if (!stream) return;
-      stream.getTracks().forEach(t => t.stop());
-      stream = null;
+    // 画板状态
+    const COLORS = [
+      { name: "红", value: "#ff3b30" },
+      { name: "绿", value: "#34c759" },
+      { name: "蓝", value: "#007aff" },
+      { name: "黄", value: "#ffcc00" },
+      { name: "白", value: "#ffffff" }
+    ];
+    let colorIndex = 0;
+    let isDrawing = false;
+    let isEraser = false;
+
+    // 防抖：颜色切换手势触发“边沿检测”
+    let okPrev = false;
+
+    // 记录上一个笔尖位置，用于连线
+    let prevPt = null;
+
+    // 平滑（简单一阶滤波）
+    let smoothPt = null;
+    const SMOOTH_ALPHA = 0.35; // 越大越跟手，越小越稳
+
+    function resizeCanvasesToVideo() {
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      if (viewCanvas.width !== w) viewCanvas.width = w;
+      if (viewCanvas.height !== h) viewCanvas.height = h;
+      if (drawCanvas.width !== w) drawCanvas.width = w;
+      if (drawCanvas.height !== h) drawCanvas.height = h;
     }
 
-    async function startCamera() {
-      await stopStream();
-      setHud('状态：请求摄像头权限…');
+    // 工具：欧式距离（归一化坐标）
+    function dist2D(a, b) {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
 
-      const constraints = {
-        audio: false,
-        video: {
-          facingMode: { ideal: facingMode },
-          width:  { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30, max: 60 }
-        }
-      };
+    // 估计手的尺度，用于阈值归一化（避免远近导致 pinch 阈值漂）
+    // 用 wrist(0) 到 middle_mcp(9) 作为尺度
+    function handScale(lm) {
+      return Math.max(1e-6, dist2D(lm[0], lm[9]));
+    }
 
-      try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        video.srcObject = stream;
+    // 判定四指是否伸直：tip.y < pip.y 且 tip.y < mcp.y（在“手指朝上”的常见姿态下有效）
+    function fingerExtended(lm, mcp, pip, tip) {
+      return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
+    }
 
-        // 等待元数据到位（才能拿到 videoWidth/videoHeight）
-        await new Promise(res => video.onloadedmetadata = () => res());
+    // 判定拇指是否大致伸直：用角度近似（2-3-4 接近一条线）
+    function angle(a, b, c) {
+      const abx = a.x - b.x, aby = a.y - b.y;
+      const cbx = c.x - b.x, cby = c.y - b.y;
+      const dot = abx * cbx + aby * cby;
+      const lab = Math.sqrt(abx * abx + aby * aby);
+      const lcb = Math.sqrt(cbx * cbx + cby * cby);
+      const cos = dot / Math.max(1e-6, lab * lcb);
+      const clamped = Math.min(1, Math.max(-1, cos));
+      return Math.acos(clamped) * 180 / Math.PI;
+    }
+    function thumbExtended(lm) {
+      const a = angle(lm[2], lm[3], lm[4]); // 越接近 180 越直
+      return a > 155;
+    }
 
-        const track = stream.getVideoTracks()[0];
-        const settings = track.getSettings ? track.getSettings() : {};
-        const actualW = settings.width || video.videoWidth;
-        const actualH = settings.height || video.videoHeight;
-        const fps = settings.frameRate ? `, ${Math.round(settings.frameRate)}fps` : '';
+    // 捏合 pinch：拇指尖(4) 与 食指尖(8) 距离 / 手尺度 < 阈值
+    function isPinch(lm) {
+      const s = handScale(lm);
+      const d = dist2D(lm[4], lm[8]) / s;
+      return d < 0.35;
+    }
 
-        setHud(`状态：摄像头已开启\n实际分辨率：${actualW}×${actualH}${fps}\n提示：如仍糊，说明设备/浏览器未给到更高分辨率`);
-        syncCanvasToVideo();
-        requestAnimationFrame(drawLoop);
-      } catch (err) {
-        console.error(err);
-        setHud(`状态：失败\n原因：${err.name || 'UnknownError'}\n${err.message || ''}`.trim());
-        alert('摄像头访问失败：请检查浏览器权限、HTTPS/localhost、系统隐私设置、是否被其他应用占用。');
+    // 五指张开：四指伸直 + 拇指较直（阈值略松）
+    function isOpenHand(lm) {
+      const i = fingerExtended(lm, 5, 6, 8);
+      const m = fingerExtended(lm, 9, 10, 12);
+      const r = fingerExtended(lm, 13, 14, 16);
+      const p = fingerExtended(lm, 17, 18, 20);
+      const t = thumbExtended(lm);
+      return i && m && r && p && t;
+    }
+
+    // OK 手势：pinch 成立 + 其余三指（中/无名/小指）伸直
+    function isOK(lm) {
+      const pinch = isPinch(lm);
+      const m = fingerExtended(lm, 9, 10, 12);
+      const r = fingerExtended(lm, 13, 14, 16);
+      const p = fingerExtended(lm, 17, 18, 20);
+      return pinch && m && r && p;
+    }
+
+    function normToPixel(pt) {
+      // 注意：我们在画面做了镜像，所以 x 需要镜像映射
+      const w = viewCanvas.width;
+      const h = viewCanvas.height;
+      const x = (1 - pt.x) * w;
+      const y = pt.y * h;
+      return { x, y };
+    }
+
+    function smoothPoint(pt) {
+      if (!smoothPt) {
+        smoothPt = { x: pt.x, y: pt.y };
+        return smoothPt;
       }
+      smoothPt.x = smoothPt.x + (pt.x - smoothPt.x) * SMOOTH_ALPHA;
+      smoothPt.y = smoothPt.y + (pt.y - smoothPt.y) * SMOOTH_ALPHA;
+      return smoothPt;
     }
 
-    // 关键：canvas 像素尺寸按 video 实际像素 * devicePixelRatio 设置，避免发虚
-    function syncCanvasToVideo() {
-      const dpr = window.devicePixelRatio || 1;
-      const w = video.videoWidth || 1280;
-      const h = video.videoHeight || 720;
-      canvas.width = Math.round(w * dpr);
-      canvas.height = Math.round(h * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 之后用“视频像素坐标系”画
-    }
+    function drawStroke(pt) {
+      // 画笔/橡皮擦
+      if (!prevPt) prevPt = pt;
 
-    // 示例绘制：只画一个中心十字，证明 canvas 与 video 坐标同步
-    function drawLoop() {
-      // 如果视频尺寸变化（某些设备会动态调整），重新同步
-      const dpr = window.devicePixelRatio || 1;
-      const expectW = Math.round((video.videoWidth || 1280) * dpr);
-      const expectH = Math.round((video.videoHeight || 720) * dpr);
-      if (canvas.width !== expectW || canvas.height !== expectH) syncCanvasToVideo();
+      dctx.save();
+      dctx.lineCap = "round";
+      dctx.lineJoin = "round";
 
-      const w = video.videoWidth || 1280;
-      const h = video.videoHeight || 720;
-
-      ctx.clearRect(0, 0, w, h);
-
-      // 十字准星
-      const cx = w / 2, cy = h / 2;
-      ctx.lineWidth = 2;
-      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-      ctx.beginPath();
-      ctx.moveTo(cx - 30, cy); ctx.lineTo(cx + 30, cy);
-      ctx.moveTo(cx, cy - 30); ctx.lineTo(cx, cy + 30);
-      ctx.stroke();
-
-      requestAnimationFrame(drawLoop);
-    }
-
-    // 切换摄像头（可能无效：PC 常只有一个摄像头）
-    switchBtn.addEventListener('click', async () => {
-      facingMode = (facingMode === 'user') ? 'environment' : 'user';
-      await startCamera();
-    });
-
-    // 页面可见性变化时，节省资源（可选）
-    document.addEventListener('visibilitychange', async () => {
-      if (document.hidden) {
-        await stopStream();
-        setHud('状态：页面后台，已停止摄像头');
+      if (isEraser) {
+        dctx.globalCompositeOperation = "destination-out";
+        dctx.strokeStyle = "rgba(0,0,0,1)";
+        dctx.lineWidth = 28;
       } else {
-        await startCamera();
+        dctx.globalCompositeOperation = "source-over";
+        dctx.strokeStyle = COLORS[colorIndex].value;
+        dctx.lineWidth = 6;
       }
+
+      dctx.beginPath();
+      dctx.moveTo(prevPt.x, prevPt.y);
+      dctx.lineTo(pt.x, pt.y);
+      dctx.stroke();
+      dctx.restore();
+
+      prevPt = pt;
+    }
+
+    async function initMediaPipe() {
+      setStatus("加载 MediaPipe（JS/WASM/模型）...");
+      vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
+      ({ FilesetResolver, HandLandmarker, DrawingUtils } = vision);
+
+      const fileset = await FilesetResolver.forVisionTasks(
+        "https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
+
+      handLandmarker = await HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: "./hand_landmarker.task" },
+        runningMode: "VIDEO",
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      drawingUtils = new DrawingUtils(vctx);
+      setStatus("MediaPipe 就绪");
+    }
+
+    async function openCamera() {
+      setStatus("请求摄像头权限中...");
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      resizeCanvasesToVideo();
+      setStatus("摄像头已开启，画板运行中");
+    }
+
+    function loop() {
+      resizeCanvasesToVideo();
+
+      // 1) 画摄像头画面到底层 viewCanvas（镜像）
+      vctx.save();
+      vctx.clearRect(0, 0, viewCanvas.width, viewCanvas.height);
+      vctx.translate(viewCanvas.width, 0);
+      vctx.scale(-1, 1);
+      vctx.drawImage(video, 0, 0, viewCanvas.width, viewCanvas.height);
+
+      // 2) 推理
+      const nowMs = performance.now();
+      const result = handLandmarker.detectForVideo(video, nowMs);
+
+      // 默认状态
+      let foundHand = false;
+      let pinchNow = false;
+      let openNow = false;
+      let okNow = false;
+
+      if (result.landmarks && result.landmarks.length > 0) {
+        // 取第一只手做画笔（你也可以扩展为两手不同功能）
+        const lm = result.landmarks[0];
+        foundHand = true;
+
+        pinchNow = isPinch(lm);
+        openNow = isOpenHand(lm);
+        okNow = isOK(lm);
+
+        // 画骨架（在底层 viewCanvas 上）
+        drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
+        drawingUtils.drawLandmarks(lm, { radius: 3 });
+
+        // 3) 模式逻辑
+        // 五指张开：橡皮擦优先级最高
+        isEraser = openNow;
+
+        // OK 手势：切换颜色（边沿触发，避免每帧狂切）
+        if (okNow && !okPrev) {
+          colorIndex = (colorIndex + 1) % COLORS.length;
+        }
+        okPrev = okNow;
+
+        // 捏合：画/停
+        // 这里做“边沿控制”：pinch 从 false->true 开始画，true->false 停止画
+        if (pinchNow && !isDrawing) {
+          isDrawing = true;
+          prevPt = null;
+          smoothPt = null;
+        } else if (!pinchNow && isDrawing) {
+          isDrawing = false;
+          prevPt = null;
+          smoothPt = null;
+        }
+
+        // 4) 画笔位置：食指尖(8)
+        if (isDrawing) {
+          const tipPx = normToPixel(lm[8]);
+          const sp = smoothPoint(tipPx);
+          drawStroke(sp);
+        }
+      } else {
+        // 没检测到手：停止绘制，避免断线飞笔
+        isDrawing = false;
+        isEraser = false;
+        prevPt = null;
+        smoothPt = null;
+        okPrev = false;
+      }
+
+      vctx.restore();
+
+      // HUD
+      if (!foundHand) setMode("未检测到手");
+      else if (isEraser) setMode(isDrawing ? "橡皮擦（捏合中）" : "橡皮擦（松开）");
+      else setMode(isDrawing ? "画笔（捏合中）" : "画笔（松开）");
+      setColor(COLORS[colorIndex].name);
+
+      rafId = requestAnimationFrame(loop);
+    }
+
+    async function main() {
+      try {
+        // 先初始化识别，再开摄像头，避免开了摄像头却没法推理
+        await initMediaPipe();
+        await openCamera();
+        setMode("等待手势");
+        setColor(COLORS[colorIndex].name);
+        loop();
+      } catch (e) {
+        console.error(e);
+        const msg = String(e).toLowerCase();
+        if (msg.includes("permission") || msg.includes("denied")) setStatus("摄像头权限被拒绝（请在地址栏相机权限里允许）");
+        else if (msg.includes("hand_landmarker.task")) setStatus("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
+        else setStatus("初始化失败（可能是网络/CDN/WASM，打开控制台看第一条报错）");
+      }
+    }
+
+    window.addEventListener("beforeunload", () => {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (stream) stream.getTracks().forEach(t => t.stop());
     });
 
-    // 启动
-    startCamera();
+    main();
   </script>
 </body>
 </html>
