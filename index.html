@@ -1,1 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>hand_view</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 20px; }
+    .wrap { max-width: 980px; margin: 0 auto; }
+    .panel { width: 100%; aspect-ratio: 16/9; background: #111; border-radius: 12px; overflow: hidden; position: relative; }
+    canvas { width: 100%; height: 100%; display: block; }
+    .bar { margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { color: #333; font-size: 14px; }
+    .hint { color: #666; font-size: 13px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel">
+      <canvas id="canvas"></canvas>
+    </div>
+    <div class="bar">
+      <button id="btnScreen">Open Screen</button>
+      <button id="btnTest" disabled>Open Test</button>
+      <span class="status" id="status">状态：未开启摄像头</span>
+    </div>
+    <div class="hint">提示：首次打开会弹出摄像头权限请求；按下 Open Screen 后才可开启识别；识别开关不会上传视频，全部在浏览器本地运行。</div>
+  </div>
+
+  <video id="video" playsinline style="display:none;"></video>
+
+  <script type="module">
+    import vision from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+    const { FilesetResolver, HandLandmarker, DrawingUtils } = vision;
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const video = document.getElementById("video");
+    const btnScreen = document.getElementById("btnScreen");
+    const btnTest = document.getElementById("btnTest");
+    const statusEl = document.getElementById("status");
+
+    let stream = null;
+    let runningScreen = false;   // 摄像头开关
+    let runningTest = false;     // 识别开关
+    let handLandmarker = null;
+    let drawingUtils = null;
+    let rafId = null;
+
+    function setStatus(text) { statusEl.textContent = "状态：" + text; }
+
+    function resizeCanvasToVideo() {
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+    }
+
+    async function initHandLandmarkerOnce() {
+      if (handLandmarker) return;
+      setStatus("正在加载识别组件（WASM/模型）...");
+      const fileset = await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
+      handLandmarker = await HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: "./hand_landmarker.task" },
+        runningMode: "VIDEO",
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+      drawingUtils = new DrawingUtils(ctx);
+      setStatus("识别组件已就绪");
+    }
+
+    async function openScreen() {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      resizeCanvasToVideo();
+      runningScreen = true;
+      btnScreen.textContent = "Close Screen";
+      btnTest.disabled = false;
+      setStatus("摄像头已开启");
+      loop();
+    }
+
+    function closeScreen() {
+      runningTest = false;
+      btnTest.textContent = "Open Test";
+
+      runningScreen = false;
+      btnScreen.textContent = "Open Screen";
+      btnTest.disabled = true;
+
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+
+      if (stream) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+      }
+      video.srcObject = null;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      setStatus("摄像头已关闭");
+    }
+
+    async function toggleTest() {
+      if (!runningTest) {
+        await initHandLandmarkerOnce();
+        runningTest = true;
+        btnTest.textContent = "Close Test";
+        setStatus("识别中（点+骨架）");
+      } else {
+        runningTest = false;
+        btnTest.textContent = "Open Test";
+        setStatus("摄像头已开启（未识别）");
+      }
+    }
+
+    function loop() {
+      if (!runningScreen) return;
+      resizeCanvasToVideo();
+
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 镜像显示更符合自拍习惯：画布翻转后绘制视频与骨架
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (runningTest && handLandmarker) {
+        const nowMs = performance.now();
+        const result = handLandmarker.detectForVideo(video, nowMs);
+
+        if (result.landmarks && result.landmarks.length > 0) {
+          for (const lm of result.landmarks) {
+            // 画连线与点（使用 tasks-vision 内置连接关系）
+            drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
+            drawingUtils.drawLandmarks(lm, { radius: 3 });
+          }
+        }
+      }
+
+      ctx.restore();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    btnScreen.addEventListener("click", async () => {
+      try {
+        if (!runningScreen) {
+          setStatus("请求摄像头权限中...");
+          await openScreen();
+        } else {
+          closeScreen();
+        }
+      } catch (e) {
+        console.error(e);
+        setStatus("摄像头打开失败（检查权限/HTTPS/浏览器）");
+      }
+    });
+
+    btnTest.addEventListener("click", async () => {
+      try {
+        await toggleTest();
+      } catch (e) {
+        console.error(e);
+        setStatus("识别初始化失败（模型路径/网络/CDN）");
+      }
+    });
+
+    // 页面关闭时释放摄像头
+    window.addEventListener("beforeunload", () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+    });
+  </script>
+</body>
+</html>
 
