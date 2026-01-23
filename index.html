@@ -9,10 +9,8 @@
     .wrap { max-width: 980px; margin: 0 auto; }
     .panel { width: 100%; aspect-ratio: 16/9; background: #111; border-radius: 12px; overflow: hidden; position: relative; }
     canvas { width: 100%; height: 100%; display: block; }
-    .bar { margin-top: 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
-    .status { color: #333; font-size: 14px; }
-    .hint { color: #666; font-size: 13px; margin-top: 8px; line-height: 1.5; }
+    .status { margin-top: 12px; color: #333; font-size: 14px; }
+    .hint { margin-top: 6px; color: #666; font-size: 13px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -20,18 +18,8 @@
     <div class="panel">
       <canvas id="canvas"></canvas>
     </div>
-
-    <div class="bar">
-      <button id="btnScreen" type="button">Open Screen</button>
-      <button id="btnTest" type="button">Open Test</button>
-      <span class="status" id="status">状态：就绪</span>
-    </div>
-
-    <div class="hint">
-      提示：必须在 HTTPS 下才能打开摄像头（GitHub Pages 自带 HTTPS）。<br>
-      Open Screen：开/关摄像头。Open Test：开/关手部关键点识别与绘制（仅浏览器本地运行，不上传视频）。<br>
-      如果按钮可点但无画面，优先检查浏览器相机权限；如果提示“MediaPipe 加载失败”，说明 CDN 被拦或网络异常。
-    </div>
+    <div class="status" id="status">状态：初始化中...</div>
+    <div class="hint">说明：页面会自动请求摄像头权限，并在浏览器本地实时绘制手部关键点与骨架，不上传视频。</div>
   </div>
 
   <video id="video" playsinline style="display:none;"></video>
@@ -40,27 +28,20 @@
     const canvas = document.getElementById("canvas");
     const ctx = canvas.getContext("2d");
     const video = document.getElementById("video");
-    const btnScreen = document.getElementById("btnScreen");
-    const btnTest = document.getElementById("btnTest");
     const statusEl = document.getElementById("status");
 
-    let stream = null;
-    let screenOn = false;
-    let testOn = false;
+    function setStatus(t) { statusEl.textContent = "状态：" + t; }
 
+    let stream = null;
     let rafId = null;
 
-    // MediaPipe 相关（延迟加载）
     let vision = null;
     let FilesetResolver = null;
     let HandLandmarker = null;
     let DrawingUtils = null;
+
     let handLandmarker = null;
     let drawingUtils = null;
-    let mpReady = false;
-    let mpLoading = false;
-
-    function setStatus(text) { statusEl.textContent = "状态：" + text; }
 
     function resizeCanvasToVideo() {
       const w = video.videoWidth || 1280;
@@ -69,48 +50,30 @@
       if (canvas.height !== h) canvas.height = h;
     }
 
-    async function ensureMediaPipeReady() {
-      if (mpReady) return true;
-      if (mpLoading) return false;
+    async function initMediaPipe() {
+      setStatus("加载 MediaPipe（JS/WASM/模型）...");
+      // 动态 import：避免 CDN 加载失败导致整页脚本失效
+      vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
+      ({ FilesetResolver, HandLandmarker, DrawingUtils } = vision);
 
-      mpLoading = true;
-      setStatus("正在加载 MediaPipe（JS/WASM/模型）...");
+      const fileset = await FilesetResolver.forVisionTasks(
+        "https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm"
+      );
 
-      try {
-        // 1) 动态 import（避免 module 顶部 import 失败导致整页按钮失效）
-        vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
-        ({ FilesetResolver, HandLandmarker, DrawingUtils } = vision);
+      handLandmarker = await HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: "./hand_landmarker.task" }, // 与 index.html 同目录
+        runningMode: "VIDEO",
+        numHands: 2,
+        minHandDetectionConfidence: 0.5,
+        minHandPresenceConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
 
-        // 2) 加载 WASM 运行时
-        const fileset = await FilesetResolver.forVisionTasks(
-          "https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm"
-        );
-
-        // 3) 加载你仓库同目录的模型文件
-        handLandmarker = await HandLandmarker.createFromOptions(fileset, {
-          baseOptions: { modelAssetPath: "./hand_landmarker.task" },
-          runningMode: "VIDEO",
-          numHands: 2,
-          minHandDetectionConfidence: 0.5,
-          minHandPresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5
-        });
-
-        drawingUtils = new DrawingUtils(ctx);
-        mpReady = true;
-        setStatus("MediaPipe 就绪");
-        return true;
-      } catch (e) {
-        console.error(e);
-        setStatus("MediaPipe 加载失败（网络/CDN/模型路径）");
-        mpReady = false;
-        return false;
-      } finally {
-        mpLoading = false;
-      }
+      drawingUtils = new DrawingUtils(ctx);
+      setStatus("MediaPipe 就绪");
     }
 
-    async function openScreen() {
+    async function openCamera() {
       setStatus("请求摄像头权限中...");
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user" },
@@ -119,87 +82,27 @@
       video.srcObject = stream;
       await video.play();
       resizeCanvasToVideo();
-
-      screenOn = true;
-      btnScreen.textContent = "Close Screen";
-      setStatus(testOn ? "摄像头已开启（识别开）" : "摄像头已开启（识别关）");
-      loop();
-    }
-
-    function closeScreen() {
-      // 关闭摄像头时，自动关闭测试（避免后台仍跑推理）
-      testOn = false;
-      btnTest.textContent = "Open Test";
-
-      screenOn = false;
-      btnScreen.textContent = "Open Screen";
-
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = null;
-
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
-      video.srcObject = null;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      setStatus("摄像头已关闭");
-    }
-
-    async function toggleScreen() {
-      try {
-        if (!screenOn) await openScreen();
-        else closeScreen();
-      } catch (e) {
-        console.error(e);
-        setStatus("摄像头打开失败（检查权限/浏览器/HTTPS）");
-      }
-    }
-
-    async function toggleTest() {
-      // 允许点击，但行为要合理：没开摄像头就提示
-      if (!screenOn) {
-        setStatus("请先 Open Screen 开启摄像头");
-        return;
-      }
-
-      // 开启测试：确保 MediaPipe 就绪
-      if (!testOn) {
-        const ok = await ensureMediaPipeReady();
-        if (!ok) return;
-        testOn = true;
-        btnTest.textContent = "Close Test";
-        setStatus("摄像头已开启（识别开）");
-      } else {
-        testOn = false;
-        btnTest.textContent = "Open Test";
-        setStatus("摄像头已开启（识别关）");
-      }
+      setStatus("摄像头已开启，识别中...");
     }
 
     function loop() {
-      if (!screenOn) return;
       resizeCanvasToVideo();
 
       ctx.save();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      // 镜像显示更符合自拍直觉
+      // 镜像显示（自拍习惯）
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
-
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      if (testOn && mpReady && handLandmarker && drawingUtils) {
-        const nowMs = performance.now();
-        const result = handLandmarker.detectForVideo(video, nowMs);
+      const nowMs = performance.now();
+      const result = handLandmarker.detectForVideo(video, nowMs);
 
-        if (result.landmarks && result.landmarks.length > 0) {
-          for (const lm of result.landmarks) {
-            drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
-            drawingUtils.drawLandmarks(lm, { radius: 3 });
-          }
+      if (result.landmarks && result.landmarks.length > 0) {
+        for (const lm of result.landmarks) {
+          drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
+          drawingUtils.drawLandmarks(lm, { radius: 3 });
         }
       }
 
@@ -207,25 +110,33 @@
       rafId = requestAnimationFrame(loop);
     }
 
-    btnScreen.addEventListener("click", toggleScreen);
-    btnTest.addEventListener("click", toggleTest);
+    async function main() {
+      try {
+        // 先初始化识别，再开摄像头；这样一开就能画
+        await initMediaPipe();
+        await openCamera();
+        loop();
+      } catch (e) {
+        console.error(e);
+        // 常见失败：相机权限拒绝 / CDN 被拦 / 模型路径不对
+        if (String(e).toLowerCase().includes("permission") || String(e).toLowerCase().includes("denied")) {
+          setStatus("摄像头权限被拒绝（请在浏览器地址栏相机图标里允许）");
+        } else if (String(e).toLowerCase().includes("hand_landmarker.task")) {
+          setStatus("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
+        } else {
+          setStatus("初始化失败（打开控制台查看错误：可能是网络/CDN/WASM）");
+        }
+      }
+    }
 
+    // 页面关闭时释放摄像头
     window.addEventListener("beforeunload", () => {
+      if (rafId) cancelAnimationFrame(rafId);
       if (stream) stream.getTracks().forEach(t => t.stop());
     });
 
-    // 初始画布文字提示
-    (function initSplash() {
-      canvas.width = 1280;
-      canvas.height = 720;
-      ctx.fillStyle = "#111";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = "#ddd";
-      ctx.font = "24px sans-serif";
-      ctx.fillText("hand_view：点击 Open Screen 打开摄像头", 40, 80);
-      ctx.font = "16px sans-serif";
-      ctx.fillText("点击 Open Test 开启手部识别与骨架绘制", 40, 120);
-    })();
+    // 自动启动
+    main();
   </script>
 </body>
 </html>
