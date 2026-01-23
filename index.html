@@ -1,32 +1,169 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <title>Camera Test</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Camera HD + Aspect + Canvas Sync</title>
   <style>
-    body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; }
-    video { width: 80vw; max-width: 800px; border-radius: 8px; }
+    :root { color-scheme: dark; }
+    body { margin: 0; height: 100vh; display: grid; place-items: center; background: #000; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .stage {
+      position: relative;
+      width: min(92vw, 1100px);
+      aspect-ratio: 16 / 9;
+      background: #111;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    video, canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain; /* 关键：保持比例，不拉伸 */
+    }
+    .hud {
+      position: absolute;
+      left: 10px;
+      bottom: 10px;
+      padding: 8px 10px;
+      background: rgba(0,0,0,.55);
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.35;
+      backdrop-filter: blur(6px);
+      max-width: calc(100% - 20px);
+    }
+    .btn {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      padding: 8px 10px;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.18);
+      color: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .btn:active { transform: translateY(1px); }
   </style>
 </head>
 <body>
-  <video id="video" autoplay playsinline></video>
+  <div class="stage">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+    <div class="hud" id="hud">状态：初始化…</div>
+    <button class="btn" id="switchBtn" title="切换前后摄像头（若设备支持）">切换摄像头</button>
+  </div>
 
   <script>
     const video = document.getElementById('video');
+    const canvas = document.getElementById('overlay');
+    const ctx = canvas.getContext('2d');
+    const hud = document.getElementById('hud');
+    const switchBtn = document.getElementById('switchBtn');
+
+    let stream = null;
+    let facingMode = 'user'; // 'user' 前置, 'environment' 后置（PC多数只有一个，切换可能无效）
+
+    function setHud(text) { hud.textContent = text; }
+
+    async function stopStream() {
+      if (!stream) return;
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
 
     async function startCamera() {
+      await stopStream();
+      setHud('状态：请求摄像头权限…');
+
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: facingMode },
+          width:  { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30, max: 60 }
+        }
+      };
+
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { width: 1280, height: 720 },
-          audio: false
-        });
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
+
+        // 等待元数据到位（才能拿到 videoWidth/videoHeight）
+        await new Promise(res => video.onloadedmetadata = () => res());
+
+        const track = stream.getVideoTracks()[0];
+        const settings = track.getSettings ? track.getSettings() : {};
+        const actualW = settings.width || video.videoWidth;
+        const actualH = settings.height || video.videoHeight;
+        const fps = settings.frameRate ? `, ${Math.round(settings.frameRate)}fps` : '';
+
+        setHud(`状态：摄像头已开启\n实际分辨率：${actualW}×${actualH}${fps}\n提示：如仍糊，说明设备/浏览器未给到更高分辨率`);
+        syncCanvasToVideo();
+        requestAnimationFrame(drawLoop);
       } catch (err) {
-        console.error('无法访问摄像头:', err);
-        alert('摄像头访问失败，请检查权限或设备');
+        console.error(err);
+        setHud(`状态：失败\n原因：${err.name || 'UnknownError'}\n${err.message || ''}`.trim());
+        alert('摄像头访问失败：请检查浏览器权限、HTTPS/localhost、系统隐私设置、是否被其他应用占用。');
       }
     }
 
+    // 关键：canvas 像素尺寸按 video 实际像素 * devicePixelRatio 设置，避免发虚
+    function syncCanvasToVideo() {
+      const dpr = window.devicePixelRatio || 1;
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 之后用“视频像素坐标系”画
+    }
+
+    // 示例绘制：只画一个中心十字，证明 canvas 与 video 坐标同步
+    function drawLoop() {
+      // 如果视频尺寸变化（某些设备会动态调整），重新同步
+      const dpr = window.devicePixelRatio || 1;
+      const expectW = Math.round((video.videoWidth || 1280) * dpr);
+      const expectH = Math.round((video.videoHeight || 720) * dpr);
+      if (canvas.width !== expectW || canvas.height !== expectH) syncCanvasToVideo();
+
+      const w = video.videoWidth || 1280;
+      const h = video.videoHeight || 720;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // 十字准星
+      const cx = w / 2, cy = h / 2;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath();
+      ctx.moveTo(cx - 30, cy); ctx.lineTo(cx + 30, cy);
+      ctx.moveTo(cx, cy - 30); ctx.lineTo(cx, cy + 30);
+      ctx.stroke();
+
+      requestAnimationFrame(drawLoop);
+    }
+
+    // 切换摄像头（可能无效：PC 常只有一个摄像头）
+    switchBtn.addEventListener('click', async () => {
+      facingMode = (facingMode === 'user') ? 'environment' : 'user';
+      await startCamera();
+    });
+
+    // 页面可见性变化时，节省资源（可选）
+    document.addEventListener('visibilitychange', async () => {
+      if (document.hidden) {
+        await stopStream();
+        setHud('状态：页面后台，已停止摄像头');
+      } else {
+        await startCamera();
+      }
+    });
+
+    // 启动
     startCamera();
   </script>
 </body>
