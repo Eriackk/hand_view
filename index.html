@@ -11,6 +11,8 @@
     canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
     .hud { margin-top: 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
     .badge { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); color: #eee; font-size: 14px; }
+    .btn { padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.18); color: #eee; font-size: 14px; cursor: pointer; user-select: none; }
+    .btn:hover { background: rgba(255,255,255,0.14); }
     .hint { margin-top: 8px; color: rgba(255,255,255,0.72); font-size: 13px; line-height: 1.5; }
   </style>
 </head>
@@ -25,11 +27,12 @@
       <span class="badge" id="status">状态：初始化中...</span>
       <span class="badge" id="mode">模式：--</span>
       <span class="badge" id="res">分辨率：--</span>
+      <button class="btn" id="clearBtn" type="button">清空画布</button>
     </div>
 
     <div class="hint">
-      手势说明：食指尖+中指尖“捏近”=落笔写字；两指“分开”=抬笔移动；四指都弯曲（握拳）=区域橡皮擦（擦头用食指尖）。<br>
-      说明：全程本地运行，不上传视频；页面镜像显示；如比例不对刷新一次重新自适应。
+      双手逻辑：两手同时出现时，任意一手为拳头=允许写字（用另一手食指尖写）；任意一手为张开手掌=停止写字。<br>
+      单手逻辑：仅食指伸直=区域橡皮擦（不写字）。说明：全程本地运行，不上传视频；页面镜像显示。
     </div>
   </div>
 
@@ -46,6 +49,7 @@
     const statusEl = document.getElementById("status");
     const modeEl = document.getElementById("mode");
     const resEl = document.getElementById("res");
+    const clearBtn = document.getElementById("clearBtn");
 
     function setStatus(t) { statusEl.textContent = "状态：" + t; }
     function setMode(t) { modeEl.textContent = "模式：" + t; }
@@ -66,29 +70,25 @@
     const PEN_COLOR = "#ff3b30";
     const PEN_WIDTH = 7;
 
-    // 橡皮擦参数（更大）
-    const ERASER_RADIUS = 42;   // 原 26 -> 42
-    const ERASER_STEP = 6;      // 半径更大时步长也加大，性能更稳
+    // 橡皮擦参数（区域擦除）
+    const ERASER_RADIUS = 46;
+    const ERASER_STEP = 6;
 
-    // 平滑（你原来的留着，后面想“更像写字”再改）
+    // 平滑与抗丢手
     const SMOOTH_ALPHA = 0.45;
-
-    // 抗丢手
     let smoothPt = null;
     let prevPt = null;
     let lastSeenTs = 0;
     const HOLD_MS = 180;
 
-    // 交互状态机
-    let penDown = false;
+    // 写字开关（由“双手拳头/布”控制）
+    let writeEnabled = false;
 
-    // 捏合阈值（滞回 + 去抖）
-    // 用“捏合距离 / 手掌宽”做归一化，适配不同远近
-    const PINCH_ON = 0.23;      // 小于它：判定落笔
-    const PINCH_OFF = 0.35;     // 大于它：判定抬笔
-    const SWITCH_FRAMES = 3;    // 连续满足 N 帧才切换（debounce）
-    let downCount = 0;
-    let upCount = 0;
+    clearBtn.addEventListener("click", () => {
+      dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      prevPt = null;
+      smoothPt = null;
+    });
 
     function calcContainRect(srcW, srcH, dstW, dstH) {
       const srcAR = srcW / srcH;
@@ -119,7 +119,7 @@
       setRes(`${vw}×${vh}`);
     }
 
-    // 归一化点 -> 像素点（镜像显示，所以 x 镜像）
+    // 镜像显示：归一化点 -> 像素点（x 取 1-x）
     function normToPixel(pt, w, h) {
       return { x: (1 - pt.x) * w, y: pt.y * h };
     }
@@ -182,12 +182,21 @@
       dctx.restore();
     }
 
-    // 手指伸直判定（你原来的逻辑复用）
+    // 手指伸直判定（手指大致朝上时有效）
     function fingerExtended(lm, mcp, pip, tip) {
       return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
     }
 
-    // “握拳/四指弯曲”判定：index/middle/ring/pinky 全都不伸直
+    // 仅食指伸直：index=true，middle/ring/pinky=false（拇指不强约束）
+    function isOnlyIndex(lm) {
+      const index = fingerExtended(lm, 5, 6, 8);
+      const middle = fingerExtended(lm, 9, 10, 12);
+      const ring = fingerExtended(lm, 13, 14, 16);
+      const pinky = fingerExtended(lm, 17, 18, 20);
+      return index && !middle && !ring && !pinky;
+    }
+
+    // 拳头：四指都不伸直
     function isFist(lm) {
       const index = fingerExtended(lm, 5, 6, 8);
       const middle = fingerExtended(lm, 9, 10, 12);
@@ -196,52 +205,13 @@
       return !index && !middle && !ring && !pinky;
     }
 
-    // 计算“捏合强度”：两指尖距离 / 手掌宽（5 到 17）
-    function pinchRatio(lm) {
-      const dx = lm[8].x - lm[12].x;
-      const dy = lm[8].y - lm[12].y;
-      const pinchDist = Math.hypot(dx, dy);
-
-      const pdx = lm[5].x - lm[17].x;
-      const pdy = lm[5].y - lm[17].y;
-      const palmWidth = Math.max(1e-6, Math.hypot(pdx, pdy));
-
-      return pinchDist / palmWidth;
-    }
-
-    // 更新 penDown（滞回 + 去抖）
-    function updatePenDown(ratio) {
-      if (!penDown) {
-        // 想落笔：ratio 必须连续小于 PINCH_ON
-        if (ratio < PINCH_ON) {
-          downCount++;
-          if (downCount >= SWITCH_FRAMES) {
-            penDown = true;
-            downCount = 0;
-            upCount = 0;
-            // 落笔瞬间重置 prevPt，避免从上一处连线
-            prevPt = null;
-            smoothPt = null;
-          }
-        } else {
-          downCount = 0;
-        }
-      } else {
-        // 想抬笔：ratio 必须连续大于 PINCH_OFF
-        if (ratio > PINCH_OFF) {
-          upCount++;
-          if (upCount >= SWITCH_FRAMES) {
-            penDown = false;
-            downCount = 0;
-            upCount = 0;
-            prevPt = null;
-            smoothPt = null;
-          }
-        } else {
-          upCount = 0;
-        }
-      }
-      return penDown;
+    // 布（张开手掌）：四指都伸直（拇指不强约束）
+    function isPalm(lm) {
+      const index = fingerExtended(lm, 5, 6, 8);
+      const middle = fingerExtended(lm, 9, 10, 12);
+      const ring = fingerExtended(lm, 13, 14, 16);
+      const pinky = fingerExtended(lm, 17, 18, 20);
+      return index && middle && ring && pinky;
     }
 
     async function initMediaPipe() {
@@ -256,7 +226,7 @@
       handLandmarker = await HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: "./hand_landmarker.task" },
         runningMode: "VIDEO",
-        numHands: 1,
+        numHands: 2,
         minHandDetectionConfidence: 0.5,
         minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
@@ -292,74 +262,100 @@
       const W = viewCanvas.width;
       const H = viewCanvas.height;
 
-      // 1) 背景黑
       vctx.save();
       vctx.clearRect(0, 0, W, H);
       vctx.fillStyle = "#000";
       vctx.fillRect(0, 0, W, H);
 
-      // 2) 摄像头：contain + 镜像
       const rect = calcContainRect(video.videoWidth || W, video.videoHeight || H, W, H);
       vctx.translate(W, 0);
       vctx.scale(-1, 1);
       vctx.drawImage(video, rect.x, rect.y, rect.w, rect.h);
       vctx.restore();
 
-      // 3) 推理
       const now = performance.now();
       const result = handLandmarker.detectForVideo(video, now);
 
       let mode = "等待手势";
 
-      if (result.landmarks && result.landmarks.length > 0) {
+      const hands = (result.landmarks && result.landmarks.length) ? result.landmarks : [];
+
+      if (hands.length > 0) {
         lastSeenTs = now;
 
-        const lm = result.landmarks[0];
+        // 画骨架（所有检测到的手都画出来）
+        for (const lm of hands) {
+          vctx.save();
+          vctx.translate(W, 0);
+          vctx.scale(-1, 1);
+          drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
+          drawingUtils.drawLandmarks(lm, { radius: 3 });
+          vctx.restore();
+        }
 
-        // 骨架叠加（可保留）
-        vctx.save();
-        vctx.translate(W, 0);
-        vctx.scale(-1, 1);
-        drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
-        drawingUtils.drawLandmarks(lm, { radius: 3 });
-        vctx.restore();
+        // 规则 1：双手时，用“拳头/布”控制写字开关
+        if (hands.length >= 2) {
+          const fistFlags = hands.map(isFist);
+          const palmFlags = hands.map(isPalm);
 
-        const fist = isFist(lm);
-        const ratio = pinchRatio(lm);
-        const down = updatePenDown(ratio);
+          const hasPalm = palmFlags.some(Boolean);
+          const hasFist = fistFlags.some(Boolean);
 
-        // 食指尖当操作点（写/擦都用它）
-        const tipPx = normToPixel(lm[8], W, H);
-        const sp = smoothPoint(tipPx);
-
-        if (fist) {
-          mode = "区域橡皮擦（握拳）";
-          // 进入擦除时，强制抬笔状态，避免擦除结束后突然连线
-          penDown = false;
-          downCount = 0;
-          upCount = 0;
-
-          if (!prevPt) prevPt = { x: sp.x, y: sp.y };
-          eraseAlong(prevPt, sp);
-          prevPt = { x: sp.x, y: sp.y };
-        } else if (down) {
-          mode = `写字（捏合落笔）`;
-          if (!prevPt) prevPt = { x: sp.x, y: sp.y };
-          drawLineInterpolated(prevPt, sp);
-          prevPt = { x: sp.x, y: sp.y };
+          // “布”优先：出现布就停写
+          if (hasPalm) {
+            writeEnabled = false;
+            prevPt = null;
+            smoothPt = null;
+            mode = "停止写字（检测到布）";
+          } else if (hasFist) {
+            writeEnabled = true;
+            // 找到“非拳头”的那只手作为书写手；如果两只都是拳头，就不写
+            const fistIdx = fistFlags.findIndex(Boolean);
+            let writeIdx = (fistIdx === 0) ? 1 : 0;
+            if (fistFlags[writeIdx]) {
+              writeEnabled = false;
+              prevPt = null;
+              smoothPt = null;
+              mode = "停止写字（两手均为拳头）";
+            } else {
+              mode = "写字（拳头允许，另一手食指尖）";
+              const lm = hands[writeIdx];
+              const tipPx = normToPixel(lm[8], W, H);
+              const sp = smoothPoint(tipPx);
+              if (!prevPt) prevPt = { x: sp.x, y: sp.y };
+              drawLineInterpolated(prevPt, sp);
+              prevPt = { x: sp.x, y: sp.y };
+            }
+          } else {
+            // 双手但无拳头也无布：不响应
+            writeEnabled = false;
+            prevPt = null;
+            smoothPt = null;
+            mode = "无响应（双手无拳头/布）";
+          }
         } else {
-          mode = "抬笔移动（两指分开）";
-          prevPt = null;
-          smoothPt = null;
+          // 规则 2：单手时，仅食指伸直=区域橡皮擦；其他无响应
+          writeEnabled = false;
+          const lm = hands[0];
+          if (isOnlyIndex(lm)) {
+            mode = "区域橡皮擦（单手仅食指）";
+            const tipPx = normToPixel(lm[8], W, H);
+            const sp = smoothPoint(tipPx);
+            if (!prevPt) prevPt = { x: sp.x, y: sp.y };
+            eraseAlong(prevPt, sp);
+            prevPt = { x: sp.x, y: sp.y };
+          } else {
+            mode = "无响应（单手非橡皮擦手势）";
+            prevPt = null;
+            smoothPt = null;
+          }
         }
       } else {
-        // 没检测到手：短暂 HOLD；超时抬笔
+        // 无手：超时抬笔
         if (now - lastSeenTs > HOLD_MS) {
           prevPt = null;
           smoothPt = null;
-          penDown = false;
-          downCount = 0;
-          upCount = 0;
+          writeEnabled = false;
         }
         mode = "未检测到手";
       }
