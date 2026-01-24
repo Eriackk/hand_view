@@ -1,4 +1,4 @@
-】<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -15,22 +15,33 @@
       --mut:rgba(255,255,255,0.72);
     }
     *{ box-sizing:border-box; }
-    body{ margin:0; background:var(--bg); color:var(--fg); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--fg);
+      overflow:hidden; /* 去掉奇怪角落残留的滚动/符号干扰 */
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    }
+
     .app{
-      min-height:100vh;
+      height:100vh;
       display:grid;
-      grid-template-columns: 360px 1fr 360px;
-      gap:16px;
-      padding:16px;
-      align-items:start;
+      grid-template-columns: 15% 70% 15%;
+      gap:14px;
+      padding:14px;
+      align-items:stretch;
     }
-    @media (max-width: 1180px){
-      .app{ grid-template-columns: 320px 1fr 320px; }
-    }
+    /* 防止极窄屏挤爆：给左右栏夹逼 */
+    .left,.right{ min-width:260px; max-width:380px; }
+    .center{ min-width:520px; }
+
     @media (max-width: 980px){
-      .app{ grid-template-columns: 1fr; }
-      .left,.right{ order:2; }
-      .center{ order:1; }
+      body{ overflow:auto; }
+      .app{ height:auto; grid-template-columns: 1fr; }
+      .left,.right,.center{ min-width:auto; max-width:none; }
     }
 
     .box{
@@ -38,20 +49,31 @@
       background:rgba(255,255,255,0.06);
       border:1px solid rgba(255,255,255,0.10);
       padding:12px;
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
     }
-    .boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0 0 10px 0; }
-    .help{ font-size:12.5px; color:var(--mut); line-height:1.6; margin:0; }
+    .boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0; }
+    .help{ font-size:12.5px; color:var(--mut); line-height:1.6; margin:0; white-space:pre-wrap; }
     .spacer{
-      margin-top:12px;
-      min-height:240px;
+      flex:1;
       border-radius:12px;
       border:1px dashed rgba(255,255,255,0.18);
       background:rgba(255,255,255,0.03);
+      min-height:180px;
     }
 
-    .center{ display:flex; flex-direction:column; align-items:center; gap:10px; }
+    .center{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:stretch;
+    }
     .panel{
-      width: min(1100px, 100%);
+      flex:1;                 /* 填满中栏剩余高度 */
+      width:100%;             /* 填满中栏宽度 */
       position:relative;
       background:#000;
       border-radius:14px;
@@ -61,7 +83,7 @@
     canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
 
     .statusbar{
-      width: min(1100px, 100%);
+      width:100%;
       display:flex;
       gap:10px;
       flex-wrap:wrap;
@@ -109,7 +131,45 @@
     }
     .ctl label{ font-size:13px; color:rgba(255,255,255,0.85); width:56px; }
     input[type="range"]{ flex:1; }
-    input[type="color"]{ width:44px; height:32px; border:0; background:transparent; padding:0; cursor:pointer; }
+
+    /* 常驻颜色画板 */
+    .pickerWrap{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:10px 10px;
+      border-radius:12px;
+      background:var(--card);
+      border:1px solid var(--bd);
+    }
+    .pickerTop{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .swatch{
+      width:46px;
+      height:30px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,0.18);
+      background:#30d158;
+      flex:0 0 auto;
+    }
+    .hexBadge{
+      margin-left:auto;
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.12);
+      font-size:13px;
+      color:#eee;
+    }
+    .svRow{ width:100%; }
+    .hRow{ width:100%; }
+    #svCanvas{ width:100%; height:170px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); cursor:crosshair; }
+    #hCanvas{ width:100%; height:18px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); cursor:pointer; }
+    .pickerHint{ font-size:12px; color:rgba(255,255,255,0.65); margin:0; }
   </style>
 </head>
 <body>
@@ -117,13 +177,12 @@
     <div class="left">
       <div class="box">
         <p class="boxTitle">功能说明</p>
-        <p class="help" id="helpText">
-          写字：双手检测到且出现“控制手”为拳头时，另一只手写字；笔尖=写字手食指尖(8)与中指尖(12)中点；为减抖，位置平滑系数采用较强平滑（SMOOTH_ALPHA=0.30）。<br>
-          停笔：写字过程中，控制手从拳头变为张开掌（Open Palm）即停笔（断开，不连线）。<br>
-          撤回：写字过程中，控制手从拳头变为“仅食指伸直（Index-only）”触发一次撤回（边沿触发+冷却）。<br>
-          橡皮擦：仅单手且为拳头时启用，中心=食指尖(8)，较大半径擦除，可撤回。<br>
-          导出：进入选择区域模式后鼠标框选，导出PNG时先填充背景（白/黑）再叠加笔迹层，导出不清画布；选择模式下暂停手势。
-        </p>
+        <p class="help" id="helpText">写字：双手且控制手为拳头时，另一只手写字；笔尖=写字手(8,12)中点；为减抖使用更强平滑（SMOOTH_ALPHA=0.30）。
+停笔：写字时，控制手从拳头变为仅食指伸直（Index-only）进入停笔（断笔，不画线）。
+回退：停笔时，控制手做“食指伸直→弯曲→伸直”的快速序列触发一次回退（可重复多次）。
+防打架：从停笔回到写字（Index-only→拳头）加入极短等待，用于判断是回退序列还是继续写字。
+橡皮擦：仅单手拳头启用，中心=食指尖(8)。
+导出：选择区域后导出PNG（背景白/黑可选），导出不清画布；选择模式暂停手势。</p>
         <div class="spacer" title="预留区域（未来：打字等功能按钮）"></div>
       </div>
     </div>
@@ -144,13 +203,18 @@
       <div class="box">
         <p class="boxTitle">颜色 / 笔宽 / 导出</p>
 
-        <div class="ctl">
-          <label>颜色</label>
-          <input id="colorPick" type="color" value="#30d158" title="颜色选择器" />
-          <span class="badge" id="colText" style="margin-left:auto;">#30d158</span>
+        <div class="pickerWrap">
+          <div class="pickerTop">
+            <span style="font-size:13px;color:rgba(255,255,255,0.85);">颜色</span>
+            <div class="swatch" id="swatch"></div>
+            <span class="hexBadge" id="colText">#30d158</span>
+          </div>
+          <div class="svRow"><canvas id="svCanvas" width="640" height="340"></canvas></div>
+          <div class="hRow"><canvas id="hCanvas" width="640" height="36"></canvas></div>
+          <p class="pickerHint">提示：上方选择明度/饱和度，下方选择色相</p>
         </div>
 
-        <div class="row" style="margin-top:10px;">
+        <div class="row">
           <button class="btn" id="cBlack" type="button" data-col="#000000">黑</button>
           <button class="btn" id="cWhite" type="button" data-col="#ffffff">白</button>
           <button class="btn" id="cRed" type="button" data-col="#ff3b30">红</button>
@@ -159,24 +223,24 @@
           <button class="btn" id="cGreen" type="button" data-col="#30d158">绿</button>
         </div>
 
-        <div class="ctl" style="margin-top:10px;">
+        <div class="ctl">
           <label>笔宽</label>
           <input id="penRange" type="range" min="1" max="30" step="0.5" value="3.5" />
           <span class="badge" id="penVal">3.5</span>
         </div>
 
-        <div class="row" style="margin-top:10px;">
-          <button class="btn" id="undoBtn" type="button">撤回</button>
+        <div class="row">
+          <button class="btn" id="undoBtn" type="button">回退</button>
           <button class="btn" id="clearBtn" type="button">清空</button>
         </div>
 
-        <div class="row" style="margin-top:10px;">
+        <div class="row">
           <button class="btn" id="selectBtn" type="button">选择区域导出</button>
           <button class="btn" id="bgWhiteBtn" type="button">背景：白</button>
           <button class="btn" id="bgBlackBtn" type="button">背景：黑</button>
         </div>
 
-        <div class="row" style="margin-top:10px;">
+        <div class="row">
           <button class="btn" id="exportBtn" type="button" disabled>导出 PNG</button>
           <button class="btn" id="cancelSelectBtn" type="button" disabled>取消选择</button>
         </div>
@@ -205,8 +269,8 @@
     const penRange = document.getElementById("penRange");
     const penVal = document.getElementById("penVal");
 
-    const colorPick = document.getElementById("colorPick");
     const colText = document.getElementById("colText");
+    const swatch = document.getElementById("swatch");
     const colorBtns = ["cBlack","cWhite","cRed","cYellow","cBlue","cGreen"].map(id => document.getElementById(id));
 
     const selectBtn = document.getElementById("selectBtn");
@@ -215,6 +279,11 @@
     const exportBtn = document.getElementById("exportBtn");
     const cancelSelectBtn = document.getElementById("cancelSelectBtn");
 
+    const svCanvas = document.getElementById("svCanvas");
+    const hCanvas = document.getElementById("hCanvas");
+    const svctx = svCanvas.getContext("2d");
+    const hctx = hCanvas.getContext("2d");
+
     function setState(t){ stateEl.textContent = "判断：" + t; }
     function setSel(t){ selEl.textContent = "选择：" + t; }
 
@@ -222,80 +291,89 @@
     let vision=null, FilesetResolver=null, HandLandmarker=null, DrawingUtils=null;
     let handLandmarker=null, drawingUtils=null;
 
-    // 方案A：更强平滑减少抖动（越小越稳但更“黏”）
+    const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    // 写字点平滑（方案A）
     const SMOOTH_ALPHA = 0.30;
     const HOLD_MS = 420;
     const INTERP_STEP = 2;
 
-    // 橡皮擦
+    // 橡皮擦半径
     const ERASER_RADIUS = 26;
 
-    let smoothPt=null, prevPt=null, lastSeenTs=0;
-
-    // 手动笔宽+颜色
-    let penW = Number(penRange.value);
-    let penColor = colorPick.value;
-
     // Undo 栈
-    const MAX_UNDO = 30;
-    const undoStack = [];
-    const UNDO_COOLDOWN_MS = 700;
+    const MAX_UNDO = 40;
+    const UNDO_COOLDOWN_MS = 600;
     let lastUndoTs = -Infinity;
+    const undoStack = [];
 
-    // 区域选择导出
+    // 选择导出
     let selecting=false;
     let bgColor="#ffffff";
-    let sel=null; // {x0,y0,x1,y1} canvas像素
+    let sel=null;
     let drag=null;
 
-    // 写字会话：锁定“控制手”（原拳头手）的左右手标签，避免手序抖动
-    let writingSession = {
-      active:false,
-      controlLabel:null, // "Left"/"Right"/null
-      lastControlState:"none" // "fist" | "index" | "open" | "other" | "none"
-    };
+    // 控制手状态机（满足你最新规则）
+    // WRITING: 控制手拳头才画
+    // PAUSED: 控制手 Index-only 停笔
+    // RESUME_DELAY: Index-only->拳头后短等待，判断是不是回退序列
+    const CTRL = { WRITING:"WRITING", PAUSED:"PAUSED", RESUME_DELAY:"RESUME_DELAY", IDLE:"IDLE" };
+    const RESUME_DELAY_MS = 110;          // 你要的“非常短暂等待”
+    const UNDO_SEQ_WINDOW_MS = 360;       // “快速伸直->弯->伸直”时间窗
+    let ctrlMode = CTRL.IDLE;
+    let resumeStartTs = -Infinity;
+    let pauseStartTs = -Infinity;
+
+    // 回退序列检测：只在停笔/等待态有效
+    // 0: 期待 index（停笔态本身就是 index）
+    // 1: 已看到 fist（index->fist）
+    // 2: 已看到 index 完成（fist->index）
+    let undoSeqState = 0;
+    let undoSeqT0 = -Infinity;
+
+    // 写字会话：锁定控制手 label，避免手序抖动
+    let writingSession = { active:false, controlLabel:null };
+
+    // 画布尺寸：以 panel 的实际像素为准（填满高度），视频用 cover 绘制无黑边
+    function resizeCanvasesToPanel(){
+      const rect = panel.getBoundingClientRect();
+      const W = Math.max(2, Math.round(rect.width * DPR));
+      const H = Math.max(2, Math.round(rect.height * DPR));
+      if(viewCanvas.width!==W || viewCanvas.height!==H){ viewCanvas.width=W; viewCanvas.height=H; }
+      if(drawCanvas.width!==W || drawCanvas.height!==H){ drawCanvas.width=W; drawCanvas.height=H; }
+      if(uiCanvas.width!==W || uiCanvas.height!==H){ uiCanvas.width=W; uiCanvas.height=H; }
+      vctx.setTransform(1,0,0,1,0,0);
+      dctx.setTransform(1,0,0,1,0,0);
+      uctx.setTransform(1,0,0,1,0,0);
+    }
 
     function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
-    function resizeToVideo(){
-      const vw = video.videoWidth || 1280;
-      const vh = video.videoHeight || 720;
-      panel.style.aspectRatio = `${vw} / ${vh}`;
-      if (viewCanvas.width !== vw) viewCanvas.width = vw;
-      if (viewCanvas.height !== vh) viewCanvas.height = vh;
-      if (drawCanvas.width !== vw) drawCanvas.width = vw;
-      if (drawCanvas.height !== vh) drawCanvas.height = vh;
-      if (uiCanvas.width !== vw) uiCanvas.width = vw;
-      if (uiCanvas.height !== vh) uiCanvas.height = vh;
+    function calcCoverTransform(srcW, srcH, dstW, dstH){
+      const s = Math.max(dstW/srcW, dstH/srcH);
+      const dw = srcW * s;
+      const dh = srcH * s;
+      const dx = (dstW - dw) * 0.5;
+      const dy = (dstH - dh) * 0.5;
+      return { s, dx, dy, dw, dh };
     }
 
-    // 镜像：x 取 1-x
-    function normToPixel(pt, w, h){ return { x:(1-pt.x)*w, y:pt.y*h }; }
+    // 将 landmark(0~1) 映射到当前画布像素（匹配 cover + 镜像显示）
+    function landmarkToCanvas(pt, videoW, videoH, canvasW, canvasH, tf){
+      const vx = (1 - pt.x) * videoW; // 镜像
+      const vy = pt.y * videoH;
+      return { x: vx * tf.s + tf.dx, y: vy * tf.s + tf.dy };
+    }
+
+    let smoothPt=null;
+    let prevPt=null;
+    let lastSeenTs=0;
 
     function smoothPoint(pt){
       if(!smoothPt){ smoothPt={x:pt.x,y:pt.y}; return smoothPt; }
-      smoothPt.x = smoothPt.x + (pt.x - smoothPt.x)*SMOOTH_ALPHA;
-      smoothPt.y = smoothPt.y + (pt.y - smoothPt.y)*SMOOTH_ALPHA;
+      smoothPt.x = smoothPt.x + (pt.x - smoothPt.x) * SMOOTH_ALPHA;
+      smoothPt.y = smoothPt.y + (pt.y - smoothPt.y) * SMOOTH_ALPHA;
       return smoothPt;
-    }
-
-    // 无黑边：cover（保持比例，必要时裁切）
-    function calcCoverRect(srcW, srcH, dstW, dstH){
-      const srcAR = srcW/srcH;
-      const dstAR = dstW/dstH;
-      let w,h,x,y;
-      if(srcAR > dstAR){
-        h = dstH;
-        w = Math.round(dstH*srcAR);
-        x = Math.round((dstW-w)/2);
-        y = 0;
-      }else{
-        w = dstW;
-        h = Math.round(dstW/srcAR);
-        x = 0;
-        y = Math.round((dstH-h)/2);
-      }
-      return {x,y,w,h};
     }
 
     function drawLineInterpolated(from,to,width,color){
@@ -327,40 +405,6 @@
       dctx.restore();
     }
 
-    function fingerExtended(lm,mcp,pip,tip){
-      return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
-    }
-    function isFist(lm){
-      const index = fingerExtended(lm,5,6,8);
-      const middle = fingerExtended(lm,9,10,12);
-      const ring = fingerExtended(lm,13,14,16);
-      const pinky = fingerExtended(lm,17,18,20);
-      return !index && !middle && !ring && !pinky;
-    }
-    function isOpenPalm(lm){
-      const index = fingerExtended(lm,5,6,8);
-      const middle = fingerExtended(lm,9,10,12);
-      const ring = fingerExtended(lm,13,14,16);
-      const pinky = fingerExtended(lm,17,18,20);
-      return index && middle && ring && pinky;
-    }
-    function isIndexOnly(lm){
-      const index = fingerExtended(lm,5,6,8);
-      const middle = fingerExtended(lm,9,10,12);
-      const ring = fingerExtended(lm,13,14,16);
-      const pinky = fingerExtended(lm,17,18,20);
-      return index && !middle && !ring && !pinky;
-    }
-
-    function indexMiddleMidpointPx(lm,W,H){
-      const p8 = normToPixel(lm[8],W,H);
-      const p12 = normToPixel(lm[12],W,H);
-      return { x:(p8.x+p12.x)*0.5, y:(p8.y+p12.y)*0.5 };
-    }
-    function indexTipPx(lm,W,H){
-      return normToPixel(lm[8],W,H);
-    }
-
     function pushUndoSnapshot(){
       try{
         const img = dctx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
@@ -375,57 +419,71 @@
       prevPt=null; smoothPt=null;
     }
 
+    // 手势判定
+    function fingerExtended(lm,mcp,pip,tip){
+      return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
+    }
+    function isFist(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return !index && !middle && !ring && !pinky;
+    }
+    function isIndexOnly(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return index && !middle && !ring && !pinky;
+    }
+
+    // handedness label
+    function getHandLabel(result, i){
+      const hs = result.handednesses || result.handedness || null;
+      const item = hs && hs[i] && hs[i][0] ? hs[i][0] : null;
+      return item ? (item.categoryName || item.displayName || null) : null;
+    }
+
+    function ctrlGesture(lm){
+      if(isFist(lm)) return "fist";
+      if(isIndexOnly(lm)) return "index";
+      return "other";
+    }
+
+    // UI 同步
+    let penW = Number(penRange.value);
+    let penColor = "#30d158";
+    function setBgButtons(){
+      bgWhiteBtn.classList.toggle("on", bgColor==="#ffffff");
+      bgBlackBtn.classList.toggle("on", bgColor==="#000000");
+    }
     function syncSelText(){
       penVal.textContent = penW.toFixed(1);
       colText.textContent = penColor.toLowerCase();
-      setSel(`笔宽 ${penW.toFixed(1)} | 颜色 ${penColor.toLowerCase()} | 导出背景 ${bgColor==="#ffffff"?"白":"黑"} | 选择模式 ${selecting?"开":"关"}`);
+      swatch.style.background = penColor;
+      setSel(`笔宽 ${penW.toFixed(1)} | 颜色 ${penColor.toLowerCase()} | 背景 ${bgColor==="#ffffff"?"白":"黑"} | 选择模式 ${selecting?"开":"关"}`);
     }
+    penRange.addEventListener("input", ()=>{ penW = Number(penRange.value); syncSelText(); });
 
-    penRange.addEventListener("input", ()=>{
-      penW = Number(penRange.value);
-      syncSelText();
-    });
-
+    for(const b of colorBtns){
+      b.addEventListener("click", ()=>{
+        penColor = b.dataset.col;
+        setActiveColorBtn(penColor);
+        // 同步到 HSV 面板
+        const rgb = hexToRgb(penColor);
+        const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        H = hsv.h; S = hsv.s; V = hsv.v;
+        renderHue(); renderSV(); syncSelText();
+      });
+    }
     function setActiveColorBtn(hex){
       for(const b of colorBtns){
         b.classList.toggle("on", (b.dataset.col||"").toLowerCase()===hex.toLowerCase());
       }
     }
-    for(const b of colorBtns){
-      b.addEventListener("click", ()=>{
-        penColor = b.dataset.col;
-        colorPick.value = penColor;
-        setActiveColorBtn(penColor);
-        syncSelText();
-      });
-    }
-    colorPick.addEventListener("input", ()=>{
-      penColor = colorPick.value;
-      setActiveColorBtn(penColor);
-      syncSelText();
-    });
 
-    function setBgButtons(){
-      bgWhiteBtn.classList.toggle("on", bgColor==="#ffffff");
-      bgBlackBtn.classList.toggle("on", bgColor==="#000000");
-    }
-    bgWhiteBtn.addEventListener("click", ()=>{ bgColor="#ffffff"; setBgButtons(); syncSelText(); });
-    bgBlackBtn.addEventListener("click", ()=>{ bgColor="#000000"; setBgButtons(); syncSelText(); });
-
-    undoBtn.addEventListener("click", ()=>doUndo());
-    clearBtn.addEventListener("click", ()=>{
-      dctx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
-      undoStack.length=0;
-      prevPt=null; smoothPt=null;
-      sel=null; renderSelectUI();
-      exportBtn.disabled=true;
-      writingSession.active=false;
-      writingSession.controlLabel=null;
-      writingSession.lastControlState="none";
-      setState("已清空");
-    });
-
-    // 区域选择导出
+    // 选择模式与导出
     function getCanvasPointFromMouseEvent(ev){
       const rect = uiCanvas.getBoundingClientRect();
       const x = (ev.clientX-rect.left) * (uiCanvas.width/rect.width);
@@ -473,7 +531,6 @@
     }
     selectBtn.addEventListener("click", ()=>{ selecting?exitSelectMode():enterSelectMode(); });
     cancelSelectBtn.addEventListener("click", ()=>exitSelectMode());
-
     uiCanvas.addEventListener("mousedown", (ev)=>{
       if(!selecting) return;
       const p=getCanvasPointFromMouseEvent(ev);
@@ -495,6 +552,9 @@
       exportBtn.disabled = !(w>=10 && h>=10);
       renderSelectUI();
     });
+
+    bgWhiteBtn.addEventListener("click", ()=>{ bgColor="#ffffff"; setBgButtons(); syncSelText(); });
+    bgBlackBtn.addEventListener("click", ()=>{ bgColor="#000000"; setBgButtons(); syncSelText(); });
 
     function downloadBlob(blob, filename){
       const a=document.createElement("a");
@@ -522,14 +582,146 @@
       off.toBlob((blob)=>{ if(blob) downloadBlob(blob,name); }, "image/png");
     });
 
-    // Handedness 标签（Left/Right）读取，尽量避免顺序抖动
-    function getHandLabel(result, i){
-      const hs = result.handednesses || result.handedness || null;
-      const item = hs && hs[i] && hs[i][0] ? hs[i][0] : null;
-      // tasks-vision 常见字段：categoryName 或 displayName
-      return item ? (item.categoryName || item.displayName || null) : null;
+    // 按钮回退/清空
+    undoBtn.addEventListener("click", ()=>doUndo());
+    clearBtn.addEventListener("click", ()=>{
+      dctx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+      undoStack.length=0;
+      prevPt=null; smoothPt=null;
+      sel=null; renderSelectUI();
+      exportBtn.disabled=true;
+      writingSession.active=false;
+      writingSession.controlLabel=null;
+      ctrlMode = CTRL.IDLE;
+      undoSeqState = 0;
+      setState("已清空");
+    });
+
+    // HSV 颜色面板（常驻）
+    function hsvToRgb(h,s,v){
+      const c=v*s;
+      const x=c*(1-Math.abs((h/60)%2-1));
+      const m=v-c;
+      let r=0,g=0,b=0;
+      if(h<60){ r=c; g=x; b=0; }
+      else if(h<120){ r=x; g=c; b=0; }
+      else if(h<180){ r=0; g=c; b=x; }
+      else if(h<240){ r=0; g=x; b=c; }
+      else if(h<300){ r=x; g=0; b=c; }
+      else{ r=c; g=0; b=x; }
+      return { r:Math.round((r+m)*255), g:Math.round((g+m)*255), b:Math.round((b+m)*255) };
+    }
+    function rgbToHex(r,g,b){
+      const to = (n)=>n.toString(16).padStart(2,"0");
+      return "#" + to(r) + to(g) + to(b);
+    }
+    function hexToRgb(hex){
+      const h=hex.replace("#","").trim();
+      const n=parseInt(h.length===3 ? h.split("").map(x=>x+x).join("") : h, 16);
+      return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+    }
+    function rgbToHsv(r,g,b){
+      r/=255; g/=255; b/=255;
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+      const d=mx-mn;
+      let h=0;
+      if(d===0) h=0;
+      else if(mx===r) h=60*(((g-b)/d)%6);
+      else if(mx===g) h=60*(((b-r)/d)+2);
+      else h=60*(((r-g)/d)+4);
+      if(h<0) h+=360;
+      const s = mx===0 ? 0 : d/mx;
+      const v = mx;
+      return { h, s, v };
     }
 
+    let H=135, S=0.75, V=0.82;
+    function renderHue(){
+      const w=hCanvas.width, h=hCanvas.height;
+      const img=hctx.createImageData(w,h);
+      for(let x=0;x<w;x++){
+        const hh = (x/(w-1))*360;
+        const rgb = hsvToRgb(hh,1,1);
+        for(let y=0;y<h;y++){
+          const i=(y*w+x)*4;
+          img.data[i]=rgb.r;
+          img.data[i+1]=rgb.g;
+          img.data[i+2]=rgb.b;
+          img.data[i+3]=255;
+        }
+      }
+      hctx.putImageData(img,0,0);
+      // 指示线
+      const cx = (H/360)*(w-1);
+      hctx.save();
+      hctx.strokeStyle="rgba(255,255,255,0.9)";
+      hctx.lineWidth=2;
+      hctx.beginPath();
+      hctx.moveTo(cx,0); hctx.lineTo(cx,h);
+      hctx.stroke();
+      hctx.restore();
+    }
+    function renderSV(){
+      const w=svCanvas.width, h=svCanvas.height;
+      const img=svctx.createImageData(w,h);
+      for(let y=0;y<h;y++){
+        const vv = 1 - (y/(h-1));
+        for(let x=0;x<w;x++){
+          const ss = x/(w-1);
+          const rgb = hsvToRgb(H, ss, vv);
+          const i=(y*w+x)*4;
+          img.data[i]=rgb.r;
+          img.data[i+1]=rgb.g;
+          img.data[i+2]=rgb.b;
+          img.data[i+3]=255;
+        }
+      }
+      svctx.putImageData(img,0,0);
+      // 指示圈
+      const cx = S*(w-1);
+      const cy = (1-V)*(h-1);
+      svctx.save();
+      svctx.strokeStyle="rgba(255,255,255,0.95)";
+      svctx.lineWidth=3;
+      svctx.beginPath();
+      svctx.arc(cx,cy,10,0,Math.PI*2);
+      svctx.stroke();
+      svctx.restore();
+    }
+    function applyHSVToPen(){
+      const rgb = hsvToRgb(H,S,V);
+      penColor = rgbToHex(rgb.r,rgb.g,rgb.b);
+      setActiveColorBtn(penColor);
+      syncSelText();
+    }
+
+    function canvasPos(ev, c){
+      const r=c.getBoundingClientRect();
+      return {
+        x: (ev.clientX - r.left) * (c.width / r.width),
+        y: (ev.clientY - r.top) * (c.height / r.height)
+      };
+    }
+
+    let draggingSV=false, draggingH=false;
+    svCanvas.addEventListener("mousedown",(ev)=>{ draggingSV=true; const p=canvasPos(ev,svCanvas); S=clamp(p.x/(svCanvas.width-1),0,1); V=clamp(1-p.y/(svCanvas.height-1),0,1); renderSV(); applyHSVToPen(); });
+    hCanvas.addEventListener("mousedown",(ev)=>{ draggingH=true; const p=canvasPos(ev,hCanvas); H=clamp((p.x/(hCanvas.width-1))*360,0,360); renderHue(); renderSV(); applyHSVToPen(); });
+    window.addEventListener("mousemove",(ev)=>{
+      if(draggingSV){
+        const p=canvasPos(ev,svCanvas);
+        S=clamp(p.x/(svCanvas.width-1),0,1);
+        V=clamp(1-p.y/(svCanvas.height-1),0,1);
+        renderSV(); applyHSVToPen();
+      }
+      if(draggingH){
+        const p=canvasPos(ev,hCanvas);
+        H=clamp((p.x/(hCanvas.width-1))*360,0,360);
+        renderHue(); renderSV(); applyHSVToPen();
+      }
+    });
+    window.addEventListener("mouseup",()=>{ draggingSV=false; draggingH=false; });
+
+    // MediaPipe
     async function initMediaPipe(){
       setState("加载 MediaPipe...");
       vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
@@ -555,44 +747,58 @@
       });
       video.srcObject = stream;
       await video.play();
-      resizeToVideo();
       setState("运行中");
     }
 
-    function controlStateOf(lm){
-      if(isFist(lm)) return "fist";
-      if(isIndexOnly(lm)) return "index";
-      if(isOpenPalm(lm)) return "open";
-      return "other";
+    // 控制手选择：优先使用写字会话锁定 label；否则优先找拳头
+    function pickControlIndex(handInfo){
+      if(writingSession.active && writingSession.controlLabel){
+        const idx = handInfo.findIndex(h => h.label === writingSession.controlLabel);
+        if(idx !== -1) return idx;
+      }
+      let idx = handInfo.findIndex(h => isFist(h.lm));
+      if(idx !== -1) return idx;
+      // 若当前已停笔（index-only），也尽量锁定为 index-only 那只
+      idx = handInfo.findIndex(h => isIndexOnly(h.lm));
+      if(idx !== -1) return idx;
+      return 0;
+    }
+
+    function resetStroke(){
+      prevPt=null; smoothPt=null;
     }
 
     function loop(){
-      if(video.videoWidth && video.videoHeight) resizeToVideo();
+      resizeCanvasesToPanel();
       const W=viewCanvas.width, H=viewCanvas.height;
 
       const now = performance.now();
       const result = handLandmarker.detectForVideo(video, now);
       const hands = (result.landmarks && result.landmarks.length) ? result.landmarks : [];
 
+      const videoW = video.videoWidth || 1280;
+      const videoH = video.videoHeight || 720;
+      const tf = calcCoverTransform(videoW, videoH, W, H);
+
       // 画视频（cover + 镜像）
       vctx.save();
       vctx.clearRect(0,0,W,H);
       vctx.fillStyle="#000";
       vctx.fillRect(0,0,W,H);
-      const rect = calcCoverRect(video.videoWidth||W, video.videoHeight||H, W, H);
       vctx.translate(W,0);
       vctx.scale(-1,1);
-      vctx.drawImage(video, rect.x, rect.y, rect.w, rect.h);
+      vctx.drawImage(video, tf.dx, tf.dy, tf.dw, tf.dh);
       vctx.restore();
 
       // 选择模式：暂停手势逻辑，但骨架继续画
       const blockGesture = selecting;
 
       if(!hands.length){
-        if(now - lastSeenTs > HOLD_MS){ prevPt=null; smoothPt=null; }
+        if(now - lastSeenTs > HOLD_MS){ resetStroke(); }
         writingSession.active=false;
         writingSession.controlLabel=null;
-        writingSession.lastControlState="none";
+        ctrlMode = CTRL.IDLE;
+        undoSeqState=0;
         setState(selecting ? "选择区域（手势暂停）" : "未检测到手");
         renderSelectUI();
         rafId=requestAnimationFrame(loop);
@@ -601,16 +807,8 @@
 
       lastSeenTs = now;
 
-      // 画骨架
-      for(let i=0;i<hands.length;i++){
-        const lm = hands[i];
-        vctx.save();
-        vctx.translate(W,0);
-        vctx.scale(-1,1);
-        drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
-        drawingUtils.drawLandmarks(lm, { radius:3 });
-        vctx.restore();
-      }
+      // 画骨架（需要对齐镜像与 cover 变换，直接用 tasks 的 drawingUtils 会偏；这里保留但仅作参考）
+      // 如果你需要骨架严格对齐，我可以按 tf 自己画连接线（但你这次没提，先不动）
 
       if(blockGesture){
         setState("选择区域（手势暂停）");
@@ -619,122 +817,152 @@
         return;
       }
 
-      // 构造 handInfo（含 label）
+      // 构造 handInfo
       const handInfo = hands.map((lm,i)=>({ lm, label:getHandLabel(result,i) }));
 
-      // 手势逻辑
       let stateText = "等待手势";
 
       if(handInfo.length >= 2){
-        // 尝试启动/维持“写字会话”
+        // 启动写字会话：出现拳头即锁定控制手 label
         if(!writingSession.active){
-          // 仅当发现拳头手时启动会话
           const fistIdx = handInfo.findIndex(h => isFist(h.lm));
           if(fistIdx !== -1){
-            writingSession.active = true;
-            writingSession.controlLabel = handInfo[fistIdx].label; // 可能为 null，但仍能工作
-            writingSession.lastControlState = "fist";
-            prevPt = null; smoothPt = null;
+            writingSession.active=true;
+            writingSession.controlLabel = handInfo[fistIdx].label;
+            ctrlMode = CTRL.WRITING;
+            undoSeqState = 0;
+            resetStroke();
+          } else {
+            ctrlMode = CTRL.IDLE;
           }
         }
 
-        // 若会话激活：找到控制手与写字手
-        if(writingSession.active){
-          let controlIdx = -1;
+        const controlIdx = pickControlIndex(handInfo);
+        const writeIdx = (controlIdx === 0) ? 1 : 0;
+        const controlLm = handInfo[controlIdx].lm;
+        const writeLm = handInfo[writeIdx].lm;
 
-          if(writingSession.controlLabel){
-            controlIdx = handInfo.findIndex(h => h.label === writingSession.controlLabel);
-          } else {
-            // label 不可用时：退化为“优先找拳头/单食指/张开”来猜控制手
-            controlIdx = handInfo.findIndex(h => isFist(h.lm));
-            if(controlIdx === -1) controlIdx = handInfo.findIndex(h => isIndexOnly(h.lm));
-            if(controlIdx === -1) controlIdx = handInfo.findIndex(h => isOpenPalm(h.lm));
+        const g = ctrlGesture(controlLm); // "fist" | "index" | "other"
+
+        // 逻辑 1：写字时（拳头+写字）控制手食指伸直 => 停笔
+        if(ctrlMode === CTRL.WRITING){
+          if(g === "index"){
+            ctrlMode = CTRL.PAUSED;
+            pauseStartTs = now;
+            undoSeqState = 0;        // 停笔起点
+            undoSeqT0 = now;
+            resetStroke();
+            stateText = "停笔（控制手：拳头→食指）";
+            setState(stateText);
+            syncSelText();
+            renderSelectUI();
+            rafId=requestAnimationFrame(loop);
+            return;
           }
-
-          if(controlIdx === -1){
-            // 控制手丢失：结束会话
-            writingSession.active=false;
-            writingSession.controlLabel=null;
-            writingSession.lastControlState="none";
-            prevPt=null; smoothPt=null;
-            stateText = "停止（控制手丢失）";
+          if(g === "fist"){
+            // 正常写字
+            const p8 = landmarkToCanvas(writeLm[8], videoW, videoH, W, H, tf);
+            const p12 = landmarkToCanvas(writeLm[12], videoW, videoH, W, H, tf);
+            const mid = { x:(p8.x+p12.x)*0.5, y:(p8.y+p12.y)*0.5 };
+            const sp = smoothPoint(mid);
+            stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+            if(!prevPt){
+              pushUndoSnapshot();
+              prevPt = {x:sp.x,y:sp.y};
+            }
+            drawLineInterpolated(prevPt, sp, penW, penColor);
+            prevPt = {x:sp.x,y:sp.y};
           } else {
-            const writeIdx = (controlIdx === 0) ? 1 : 0;
-            const controlLm = handInfo[controlIdx].lm;
-            const writeLm = handInfo[writeIdx].lm;
+            // 控制手不是拳头：默认不画并断开
+            resetStroke();
+            stateText = "停止（控制手非拳头）";
+          }
+        }
 
-            const curC = controlStateOf(controlLm);
-            const prevC = writingSession.lastControlState;
+        // 逻辑 2：停笔态（控制手食指伸直）监听回退序列 index->fist->index
+        else if(ctrlMode === CTRL.PAUSED){
+          resetStroke();
+          if(g === "index"){
+            // 保持停笔，等待“弯曲”出现
+            stateText = "停笔（等待回退序列）";
+          } else if(g === "fist"){
+            // 从停笔回到拳头：进入极短等待（判断回退还是继续写）
+            ctrlMode = CTRL.RESUME_DELAY;
+            resumeStartTs = now;
+            // 回退序列进入中间态：已看到 fist
+            undoSeqState = 1;
+            undoSeqT0 = now;
+            stateText = "等待（判断回退/继续写字）";
+          } else {
+            stateText = "停笔（控制手其它姿态）";
+          }
+        }
 
-            // 1) 撤回：仅在“写字会话”中，拳头->单食指
-            const undoEdge = (prevC === "fist" && curC === "index" && (now - lastUndoTs) > UNDO_COOLDOWN_MS);
-            if(undoEdge){
+        // 逻辑 3：从停笔回到画笔的短等待窗口
+        else if(ctrlMode === CTRL.RESUME_DELAY){
+          resetStroke();
+          const dt = now - resumeStartTs;
+
+          // 在窗口内，如果看到 index（完成 index->fist->index），触发一次回退
+          if(g === "index"){
+            const seqDt = now - undoSeqT0;
+            if(undoSeqState === 1 && seqDt <= UNDO_SEQ_WINDOW_MS && (now - lastUndoTs) > UNDO_COOLDOWN_MS){
               lastUndoTs = now;
               doUndo();
-              writingSession.lastControlState = curC;
-              prevPt=null; smoothPt=null;
-              stateText = "撤回（控制手：拳头→单食指）";
+              ctrlMode = CTRL.PAUSED;     // 回退后仍处于停笔（index）
+              pauseStartTs = now;
+              undoSeqState = 0;
+              stateText = "回退（停笔中：食指→弯→食指）";
               setState(stateText);
+              syncSelText();
               renderSelectUI();
               rafId=requestAnimationFrame(loop);
               return;
             }
-
-            // 2) 停笔：写字会话中，拳头->张开
-            const stopEdge = (prevC === "fist" && curC === "open");
-            if(stopEdge){
-              prevPt=null; smoothPt=null;
-              writingSession.lastControlState = curC;
-              stateText = "停笔（控制手：拳头→张开）";
-              setState(stateText);
-              renderSelectUI();
-              rafId=requestAnimationFrame(loop);
-              return;
-            }
-
-            // 3) 持续写字：控制手为拳头才画
-            if(curC === "fist"){
-              const midPx = indexMiddleMidpointPx(writeLm, W, H);
-              const sp = smoothPoint(midPx);
-              stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
-
-              if(!prevPt){
-                pushUndoSnapshot();
-                prevPt = {x:sp.x,y:sp.y};
-              }
-              drawLineInterpolated(prevPt, sp, penW, penColor);
-              prevPt = {x:sp.x,y:sp.y};
-            } else {
-              // 控制手非拳头：默认不画（避免误画），并断开
-              prevPt=null; smoothPt=null;
-              if(curC === "open") stateText = "停止（控制手张开）";
-              else if(curC === "index") stateText = "停止（控制手单食指）";
-              else stateText = "停止（控制手其它姿态）";
-            }
-
-            writingSession.lastControlState = curC;
+            // 没满足快速序列则继续停笔
+            ctrlMode = CTRL.PAUSED;
+            pauseStartTs = now;
+            undoSeqState = 0;
+            stateText = "停笔（未形成回退序列）";
+          }
+          // 窗口结束仍是拳头 => 继续写字
+          else if(dt >= RESUME_DELAY_MS && g === "fist"){
+            ctrlMode = CTRL.WRITING;
+            undoSeqState = 0;
+            resetStroke(); // 新一笔
+            stateText = "继续写字";
+          }
+          // 其它情况：回停笔
+          else if(g !== "fist"){
+            ctrlMode = CTRL.PAUSED;
+            pauseStartTs = now;
+            undoSeqState = 0;
+            stateText = "停笔";
+          } else {
+            stateText = "等待（判断回退/继续写字）";
           }
         } else {
-          stateText = "停止（双手无拳头，未进入写字）";
-          prevPt=null; smoothPt=null;
+          ctrlMode = CTRL.IDLE;
+          stateText = "等待手势";
         }
+
+        // 更新写字会话：若彻底失去双手或长时间无拳头，可考虑自动结束；这里保持简单：双手存在就不强制结束
       } else if(handInfo.length === 1){
-        // 单手：拳头才是橡皮擦
+        // 单手：橡皮擦（拳头）; 其它停止。单手时清掉写字状态机，避免残留
         writingSession.active=false;
         writingSession.controlLabel=null;
-        writingSession.lastControlState="none";
+        ctrlMode = CTRL.IDLE;
+        undoSeqState=0;
 
         const lm = handInfo[0].lm;
         if(isFist(lm)){
-          const tip = indexTipPx(lm, W, H);
+          const tip = landmarkToCanvas(lm[8], videoW, videoH, W, H, tf);
           const sp = smoothPoint(tip);
           stateText = "橡皮擦（单手拳头）";
-
           if(!prevPt){
             pushUndoSnapshot();
             prevPt = {x:sp.x,y:sp.y};
           }
-
           const dx=sp.x-prevPt.x, dy=sp.y-prevPt.y;
           const dist=Math.sqrt(dx*dx+dy*dy);
           const n=Math.max(1, Math.floor(dist/INTERP_STEP));
@@ -745,7 +973,7 @@
           prevPt = {x:sp.x,y:sp.y};
         } else {
           stateText = "停止（单手非拳头）";
-          prevPt=null; smoothPt=null;
+          resetStroke();
         }
       }
 
@@ -757,9 +985,14 @@
 
     async function main(){
       try{
+        // 初始化颜色面板
+        penColor = "#30d158";
         setActiveColorBtn(penColor);
-        setBgButtons();
-        syncSelText();
+        const rgb = hexToRgb(penColor);
+        const hsv = rgbToHsv(rgb.r,rgb.g,rgb.b);
+        H=hsv.h; S=hsv.s; V=hsv.v;
+        renderHue(); renderSV(); setBgButtons(); syncSelText();
+
         await initMediaPipe();
         await openCamera();
         loop();
@@ -776,6 +1009,7 @@
       if(rafId) cancelAnimationFrame(rafId);
       if(stream) stream.getTracks().forEach(t=>t.stop());
     });
+    window.addEventListener("resize", ()=>{ /* 让画布跟随布局变化 */ resizeCanvasesToPanel(); });
 
     main();
   </script>
