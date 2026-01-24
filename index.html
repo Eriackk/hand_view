@@ -1,4 +1,4 @@
-<!doctype html>
+】<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8" />
@@ -6,8 +6,7 @@
   <title>hand_view_whiteboard</title>
   <style>
     :root{
-      --bg:#000;
-      --fg:#eee;
+      --bg:#000; --fg:#eee;
       --card:rgba(255,255,255,0.08);
       --card2:rgba(255,255,255,0.10);
       --bd:rgba(255,255,255,0.12);
@@ -20,14 +19,34 @@
     .app{
       min-height:100vh;
       display:grid;
-      grid-template-columns: 1fr 360px;
+      grid-template-columns: 360px 1fr 360px;
       gap:16px;
       padding:16px;
       align-items:start;
     }
-    @media (max-width: 1100px){
+    @media (max-width: 1180px){
+      .app{ grid-template-columns: 320px 1fr 320px; }
+    }
+    @media (max-width: 980px){
       .app{ grid-template-columns: 1fr; }
-      .right{ order:2; }
+      .left,.right{ order:2; }
+      .center{ order:1; }
+    }
+
+    .box{
+      border-radius:14px;
+      background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.10);
+      padding:12px;
+    }
+    .boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0 0 10px 0; }
+    .help{ font-size:12.5px; color:var(--mut); line-height:1.6; margin:0; }
+    .spacer{
+      margin-top:12px;
+      min-height:240px;
+      border-radius:12px;
+      border:1px dashed rgba(255,255,255,0.18);
+      background:rgba(255,255,255,0.03);
     }
 
     .center{ display:flex; flex-direction:column; align-items:center; gap:10px; }
@@ -63,23 +82,6 @@
       white-space:nowrap;
     }
 
-    .right{
-      width:100%;
-      display:flex;
-      flex-direction:column;
-      gap:14px;
-    }
-    .box{
-      border-radius:14px;
-      background:rgba(255,255,255,0.06);
-      border:1px solid rgba(255,255,255,0.10);
-      padding:12px;
-    }
-    .boxTitle{
-      font-size:13px;
-      color:rgba(255,255,255,0.85);
-      margin:0 0 10px 0;
-    }
     .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
     .btn{
       padding:8px 12px;
@@ -107,98 +109,76 @@
     }
     .ctl label{ font-size:13px; color:rgba(255,255,255,0.85); width:56px; }
     input[type="range"]{ flex:1; }
-    input[type="color"]{ width:40px; height:30px; border:0; background:transparent; padding:0; cursor:pointer; }
-
-    .half{
-      display:grid;
-      grid-template-rows: 1fr 1fr;
-      gap:14px;
-      min-height: calc(100vh - 32px);
-    }
-    @media (max-width:1100px){
-      .half{ min-height:auto; grid-template-rows:auto auto; }
-    }
-
-    .help{
-      font-size:12.5px;
-      color:var(--mut);
-      line-height:1.55;
-      margin:0;
-    }
-    .spacer{
-      min-height:180px;
-      border-radius:12px;
-      border:1px dashed rgba(255,255,255,0.18);
-      background:rgba(255,255,255,0.03);
-    }
+    input[type="color"]{ width:44px; height:32px; border:0; background:transparent; padding:0; cursor:pointer; }
   </style>
 </head>
 <body>
   <div class="app">
+    <div class="left">
+      <div class="box">
+        <p class="boxTitle">功能说明</p>
+        <p class="help" id="helpText">
+          写字：双手检测到且出现“控制手”为拳头时，另一只手写字；笔尖=写字手食指尖(8)与中指尖(12)中点；为减抖，位置平滑系数采用较强平滑（SMOOTH_ALPHA=0.30）。<br>
+          停笔：写字过程中，控制手从拳头变为张开掌（Open Palm）即停笔（断开，不连线）。<br>
+          撤回：写字过程中，控制手从拳头变为“仅食指伸直（Index-only）”触发一次撤回（边沿触发+冷却）。<br>
+          橡皮擦：仅单手且为拳头时启用，中心=食指尖(8)，较大半径擦除，可撤回。<br>
+          导出：进入选择区域模式后鼠标框选，导出PNG时先填充背景（白/黑）再叠加笔迹层，导出不清画布；选择模式下暂停手势。
+        </p>
+        <div class="spacer" title="预留区域（未来：打字等功能按钮）"></div>
+      </div>
+    </div>
+
     <div class="center">
       <div class="panel" id="panel">
         <canvas id="viewCanvas"></canvas>
         <canvas id="drawCanvas"></canvas>
         <canvas id="uiCanvas"></canvas>
       </div>
-
       <div class="statusbar">
-        <span class="badge" id="status">状态：初始化中...</span>
-        <span class="badge" id="mode">模式：--</span>
+        <span class="badge" id="state">判断：初始化中...</span>
         <span class="badge" id="sel">选择：--</span>
       </div>
     </div>
 
     <div class="right">
-      <div class="half">
-        <div class="box" id="controls">
-          <p class="boxTitle">工具与导出</p>
+      <div class="box">
+        <p class="boxTitle">颜色 / 笔宽 / 导出</p>
 
-          <div class="ctl">
-            <label>颜色</label>
-            <input id="colorPick" type="color" value="#30d158" title="颜色选择器" />
-            <span class="badge" id="colText" style="margin-left:auto;">#30d158</span>
-          </div>
-
-          <div class="row" style="margin-top:10px;">
-            <button class="btn" id="cBlack" type="button" data-col="#000000">黑</button>
-            <button class="btn" id="cWhite" type="button" data-col="#ffffff">白</button>
-            <button class="btn" id="cRed" type="button" data-col="#ff3b30">红</button>
-            <button class="btn" id="cYellow" type="button" data-col="#ffd60a">黄</button>
-            <button class="btn" id="cBlue" type="button" data-col="#0a84ff">蓝</button>
-            <button class="btn" id="cGreen" type="button" data-col="#30d158">绿</button>
-          </div>
-
-          <div class="ctl" style="margin-top:10px;">
-            <label>笔宽</label>
-            <input id="penRange" type="range" min="1" max="30" step="0.5" value="3.5" />
-            <span class="badge" id="penVal">3.5</span>
-          </div>
-
-          <div class="row" style="margin-top:10px;">
-            <button class="btn" id="undoBtn" type="button">撤回</button>
-            <button class="btn" id="clearBtn" type="button">清空</button>
-            <button class="btn" id="gestureUndoBtn" type="button">手势撤回：关</button>
-          </div>
-
-          <div class="row" style="margin-top:10px;">
-            <button class="btn" id="selectBtn" type="button">选择区域导出</button>
-            <button class="btn" id="bgWhiteBtn" type="button">背景：白</button>
-            <button class="btn" id="bgBlackBtn" type="button">背景：黑</button>
-          </div>
-
-          <div class="row" style="margin-top:10px;">
-            <button class="btn" id="exportBtn" type="button" disabled>导出 PNG</button>
-            <button class="btn" id="cancelSelectBtn" type="button" disabled>取消选择</button>
-          </div>
+        <div class="ctl">
+          <label>颜色</label>
+          <input id="colorPick" type="color" value="#30d158" title="颜色选择器" />
+          <span class="badge" id="colText" style="margin-left:auto;">#30d158</span>
         </div>
 
-        <div class="box">
-          <p class="boxTitle">功能说明与扩展</p>
-          <p class="help" id="helpText">
-            写字：双手且存在拳头时，另一只手写字，笔尖=食指尖(8)与中指尖(12)中点。橡皮擦：仅单手拳头启用，中心=食指尖(8)。手势撤回：需要先开启“手势撤回”，双手同时从拳头→张开掌触发一次撤回（有冷却防连发）。区域导出：点“选择区域导出”，鼠标框选，再点“导出 PNG”，导出不清画布。
-          </p>
-          <div class="spacer" title="预留区域（未来：打字等功能按钮）"></div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="cBlack" type="button" data-col="#000000">黑</button>
+          <button class="btn" id="cWhite" type="button" data-col="#ffffff">白</button>
+          <button class="btn" id="cRed" type="button" data-col="#ff3b30">红</button>
+          <button class="btn" id="cYellow" type="button" data-col="#ffd60a">黄</button>
+          <button class="btn" id="cBlue" type="button" data-col="#0a84ff">蓝</button>
+          <button class="btn" id="cGreen" type="button" data-col="#30d158">绿</button>
+        </div>
+
+        <div class="ctl" style="margin-top:10px;">
+          <label>笔宽</label>
+          <input id="penRange" type="range" min="1" max="30" step="0.5" value="3.5" />
+          <span class="badge" id="penVal">3.5</span>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="undoBtn" type="button">撤回</button>
+          <button class="btn" id="clearBtn" type="button">清空</button>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="selectBtn" type="button">选择区域导出</button>
+          <button class="btn" id="bgWhiteBtn" type="button">背景：白</button>
+          <button class="btn" id="bgBlackBtn" type="button">背景：黑</button>
+        </div>
+
+        <div class="row" style="margin-top:10px;">
+          <button class="btn" id="exportBtn" type="button" disabled>导出 PNG</button>
+          <button class="btn" id="cancelSelectBtn" type="button" disabled>取消选择</button>
         </div>
       </div>
     </div>
@@ -216,13 +196,11 @@
     const uctx = uiCanvas.getContext("2d");
     const video = document.getElementById("video");
 
-    const statusEl = document.getElementById("status");
-    const modeEl = document.getElementById("mode");
+    const stateEl = document.getElementById("state");
     const selEl = document.getElementById("sel");
 
     const clearBtn = document.getElementById("clearBtn");
     const undoBtn = document.getElementById("undoBtn");
-    const gestureUndoBtn = document.getElementById("gestureUndoBtn");
 
     const penRange = document.getElementById("penRange");
     const penVal = document.getElementById("penVal");
@@ -237,16 +215,15 @@
     const exportBtn = document.getElementById("exportBtn");
     const cancelSelectBtn = document.getElementById("cancelSelectBtn");
 
-    function setStatus(t){ statusEl.textContent = "状态：" + t; }
-    function setMode(t){ modeEl.textContent = "模式：" + t; }
+    function setState(t){ stateEl.textContent = "判断：" + t; }
     function setSel(t){ selEl.textContent = "选择：" + t; }
 
     let stream=null, rafId=null;
     let vision=null, FilesetResolver=null, HandLandmarker=null, DrawingUtils=null;
     let handLandmarker=null, drawingUtils=null;
 
-    // 绘制与平滑
-    const SMOOTH_ALPHA = 0.60;
+    // 方案A：更强平滑减少抖动（越小越稳但更“黏”）
+    const SMOOTH_ALPHA = 0.30;
     const HOLD_MS = 420;
     const INTERP_STEP = 2;
 
@@ -259,17 +236,11 @@
     let penW = Number(penRange.value);
     let penColor = colorPick.value;
 
-    // Undo 栈（每次开始一笔/开始擦除前保存快照）
+    // Undo 栈
     const MAX_UNDO = 30;
     const undoStack = [];
-
-    // 手势撤回：双手 Fist->Open 同时触发，且需开关允许
-    let gestureUndoEnabled = false;
-    const UNDO_COOLDOWN_MS = 800;
-    const UNDO_SYNC_WINDOW_MS = 160; // “同时”的时间窗
+    const UNDO_COOLDOWN_MS = 700;
     let lastUndoTs = -Infinity;
-    let prevHandsState = null; // [{open,fist},...]
-    let lastBothFistTs = -Infinity;
 
     // 区域选择导出
     let selecting=false;
@@ -277,9 +248,15 @@
     let sel=null; // {x0,y0,x1,y1} canvas像素
     let drag=null;
 
+    // 写字会话：锁定“控制手”（原拳头手）的左右手标签，避免手序抖动
+    let writingSession = {
+      active:false,
+      controlLabel:null, // "Left"/"Right"/null
+      lastControlState:"none" // "fist" | "index" | "open" | "other" | "none"
+    };
+
     function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
 
-    // 主画布尺寸：严格跟随摄像头宽高比；DOM宽度自适应，DOM高度由 aspect-ratio 算出
     function resizeToVideo(){
       const vw = video.videoWidth || 1280;
       const vh = video.videoHeight || 720;
@@ -302,7 +279,7 @@
       return smoothPt;
     }
 
-    // 无黑边：cover 计算（保持比例，必要时裁切）
+    // 无黑边：cover（保持比例，必要时裁切）
     function calcCoverRect(srcW, srcH, dstW, dstH){
       const srcAR = srcW/srcH;
       const dstAR = dstW/dstH;
@@ -367,6 +344,13 @@
       const pinky = fingerExtended(lm,17,18,20);
       return index && middle && ring && pinky;
     }
+    function isIndexOnly(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return index && !middle && !ring && !pinky;
+    }
 
     function indexMiddleMidpointPx(lm,W,H){
       const p8 = normToPixel(lm[8],W,H);
@@ -391,11 +375,10 @@
       prevPt=null; smoothPt=null;
     }
 
-    // UI 同步
     function syncSelText(){
-      setSel(`笔宽 ${penW.toFixed(1)} | 颜色 ${penColor.toLowerCase()} | 背景 ${bgColor==="#ffffff"?"白":"黑"} | 手势撤回 ${gestureUndoEnabled?"开":"关"}`);
       penVal.textContent = penW.toFixed(1);
       colText.textContent = penColor.toLowerCase();
+      setSel(`笔宽 ${penW.toFixed(1)} | 颜色 ${penColor.toLowerCase()} | 导出背景 ${bgColor==="#ffffff"?"白":"黑"} | 选择模式 ${selecting?"开":"关"}`);
     }
 
     penRange.addEventListener("input", ()=>{
@@ -436,17 +419,10 @@
       prevPt=null; smoothPt=null;
       sel=null; renderSelectUI();
       exportBtn.disabled=true;
-    });
-
-    gestureUndoBtn.addEventListener("click", ()=>{
-      gestureUndoEnabled = !gestureUndoEnabled;
-      gestureUndoBtn.textContent = `手势撤回：${gestureUndoEnabled?"开":"关"}`;
-      gestureUndoBtn.classList.toggle("on", gestureUndoEnabled);
-      // 关闭时清理状态，避免再开时误触发
-      prevHandsState = null;
-      lastBothFistTs = -Infinity;
-      lastUndoTs = -Infinity;
-      syncSelText();
+      writingSession.active=false;
+      writingSession.controlLabel=null;
+      writingSession.lastControlState="none";
+      setState("已清空");
     });
 
     // 区域选择导出
@@ -483,8 +459,9 @@
       exportBtn.disabled=true;
       cancelSelectBtn.disabled=false;
       selectBtn.classList.add("on");
-      setMode("选择区域（手势暂停）");
+      setState("选择区域（手势暂停）");
       renderSelectUI();
+      syncSelText();
     }
     function exitSelectMode(){
       selecting=false; sel=null; drag=null;
@@ -492,6 +469,7 @@
       cancelSelectBtn.disabled=true;
       selectBtn.classList.remove("on");
       renderSelectUI();
+      syncSelText();
     }
     selectBtn.addEventListener("click", ()=>{ selecting?exitSelectMode():enterSelectMode(); });
     cancelSelectBtn.addEventListener("click", ()=>exitSelectMode());
@@ -527,7 +505,6 @@
       a.remove();
       setTimeout(()=>URL.revokeObjectURL(url), 5000);
     }
-
     exportBtn.addEventListener("click", ()=>{
       if(!selecting || !sel) return;
       const s=normalizeSel(sel);
@@ -545,9 +522,16 @@
       off.toBlob((blob)=>{ if(blob) downloadBlob(blob,name); }, "image/png");
     });
 
-    // MediaPipe 初始化
+    // Handedness 标签（Left/Right）读取，尽量避免顺序抖动
+    function getHandLabel(result, i){
+      const hs = result.handednesses || result.handedness || null;
+      const item = hs && hs[i] && hs[i][0] ? hs[i][0] : null;
+      // tasks-vision 常见字段：categoryName 或 displayName
+      return item ? (item.categoryName || item.displayName || null) : null;
+    }
+
     async function initMediaPipe(){
-      setStatus("加载 MediaPipe（JS/WASM/模型）...");
+      setState("加载 MediaPipe...");
       vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
       ({ FilesetResolver, HandLandmarker, DrawingUtils } = vision);
       const fileset = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm");
@@ -560,11 +544,11 @@
         minTrackingConfidence:0.5
       });
       drawingUtils = new DrawingUtils(vctx);
-      setStatus("MediaPipe 就绪");
+      setState("MediaPipe 就绪");
     }
 
     async function openCamera(){
-      setStatus("请求摄像头权限中...");
+      setState("请求摄像头权限中...");
       stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:"user", width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30,max:60} },
         audio:false
@@ -572,36 +556,14 @@
       video.srcObject = stream;
       await video.play();
       resizeToVideo();
-      setStatus("摄像头已开启，运行中");
-      setMode("等待手势");
+      setState("运行中");
     }
 
-    function computeHandsState(hands){
-      return hands.map(lm => ({ open:isOpenPalm(lm), fist:isFist(lm) }));
-    }
-
-    // 新撤回：双手同时 Fist -> Open（需启用开关）
-    function detectUndoBothFistToOpen(hands, now){
-      if(!gestureUndoEnabled) return false;
-      if(hands.length !== 2) return false;
-      if(now - lastUndoTs < UNDO_COOLDOWN_MS) return false;
-
-      const st = computeHandsState(hands);
-      const prev = prevHandsState;
-      prevHandsState = st;
-
-      const bothFist = st[0].fist && st[1].fist;
-      const bothOpen = st[0].open && st[1].open;
-
-      if(bothFist) lastBothFistTs = now;
-
-      // 必须上一段时间内出现过“双拳”，并且当前是“双掌”
-      if(bothOpen && (now - lastBothFistTs) <= UNDO_SYNC_WINDOW_MS){
-        // 边沿触发：要求上一帧不是 bothOpen（避免停在张开时连续触发）
-        const prevBothOpen = prev ? (prev[0].open && prev[1].open) : false;
-        if(!prevBothOpen) return true;
-      }
-      return false;
+    function controlStateOf(lm){
+      if(isFist(lm)) return "fist";
+      if(isIndexOnly(lm)) return "index";
+      if(isOpenPalm(lm)) return "open";
+      return "other";
     }
 
     function loop(){
@@ -612,7 +574,7 @@
       const result = handLandmarker.detectForVideo(video, now);
       const hands = (result.landmarks && result.landmarks.length) ? result.landmarks : [];
 
-      // 先画视频（cover，无黑边；镜像显示）
+      // 画视频（cover + 镜像）
       vctx.save();
       vctx.clearRect(0,0,W,H);
       vctx.fillStyle="#000";
@@ -623,97 +585,156 @@
       vctx.drawImage(video, rect.x, rect.y, rect.w, rect.h);
       vctx.restore();
 
-      // 选择模式：暂停手势写/擦/撤回，但不暂停骨架显示
+      // 选择模式：暂停手势逻辑，但骨架继续画
       const blockGesture = selecting;
 
-      if(hands.length){
-        lastSeenTs = now;
-
-        // 画骨架（镜像坐标系绘制）
-        for(const lm of hands){
-          vctx.save();
-          vctx.translate(W,0);
-          vctx.scale(-1,1);
-          drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
-          drawingUtils.drawLandmarks(lm, { radius:3 });
-          vctx.restore();
-        }
-      }else{
+      if(!hands.length){
         if(now - lastSeenTs > HOLD_MS){ prevPt=null; smoothPt=null; }
-        if(!selecting) { prevHandsState=null; lastBothFistTs=-Infinity; }
-        setMode(selecting ? "选择区域（手势暂停）" : "未检测到手");
+        writingSession.active=false;
+        writingSession.controlLabel=null;
+        writingSession.lastControlState="none";
+        setState(selecting ? "选择区域（手势暂停）" : "未检测到手");
         renderSelectUI();
         rafId=requestAnimationFrame(loop);
         return;
+      }
+
+      lastSeenTs = now;
+
+      // 画骨架
+      for(let i=0;i<hands.length;i++){
+        const lm = hands[i];
+        vctx.save();
+        vctx.translate(W,0);
+        vctx.scale(-1,1);
+        drawingUtils.drawConnectors(lm, HandLandmarker.HAND_CONNECTIONS);
+        drawingUtils.drawLandmarks(lm, { radius:3 });
+        vctx.restore();
       }
 
       if(blockGesture){
-        setMode("选择区域（手势暂停）");
+        setState("选择区域（手势暂停）");
         renderSelectUI();
         rafId=requestAnimationFrame(loop);
         return;
       }
 
-      // 手势逻辑：优先撤回，再写字，再橡皮擦
-      let mode = "等待手势";
+      // 构造 handInfo（含 label）
+      const handInfo = hands.map((lm,i)=>({ lm, label:getHandLabel(result,i) }));
 
-      if(hands.length >= 2){
-        const two = [hands[0], hands[1]];
+      // 手势逻辑
+      let stateText = "等待手势";
 
-        if(detectUndoBothFistToOpen(two, now)){
-          lastUndoTs = now;
-          doUndo();
-          mode = "撤回（双拳→双掌）";
-          prevPt=null; smoothPt=null;
-          setMode(mode);
-          renderSelectUI();
-          rafId=requestAnimationFrame(loop);
-          return;
-        }
-
-        // 双手写字：存在拳头 -> 另一手写字
-        const fistFlags = two.map(isFist);
-        const fistIdx = fistFlags.findIndex(Boolean);
-        if(fistIdx !== -1){
-          const writeIdx = (fistIdx === 0) ? 1 : 0;
-          const lm = two[writeIdx];
-
-          const midPx = indexMiddleMidpointPx(lm, W, H);
-          const sp = smoothPoint(midPx);
-
-          mode = `写字（拳头手=${fistIdx+1}，输出手=${writeIdx+1}）`;
-
-          if(!prevPt){
-            pushUndoSnapshot();
-            prevPt = {x:sp.x,y:sp.y};
+      if(handInfo.length >= 2){
+        // 尝试启动/维持“写字会话”
+        if(!writingSession.active){
+          // 仅当发现拳头手时启动会话
+          const fistIdx = handInfo.findIndex(h => isFist(h.lm));
+          if(fistIdx !== -1){
+            writingSession.active = true;
+            writingSession.controlLabel = handInfo[fistIdx].label; // 可能为 null，但仍能工作
+            writingSession.lastControlState = "fist";
+            prevPt = null; smoothPt = null;
           }
-          drawLineInterpolated(prevPt, sp, penW, penColor);
-          prevPt = {x:sp.x,y:sp.y};
-        }else{
-          mode = "停止（双手无拳头）";
-          prevPt=null; smoothPt=null;
         }
 
-        // 维持 prevHandsState（用于撤回检测）
-        prevHandsState = computeHandsState(two);
-      }
-      else if(hands.length === 1){
-        // 单手：拳头才是橡皮擦
-        prevHandsState = null;
-        lastBothFistTs = -Infinity;
+        // 若会话激活：找到控制手与写字手
+        if(writingSession.active){
+          let controlIdx = -1;
 
-        const lm = hands[0];
+          if(writingSession.controlLabel){
+            controlIdx = handInfo.findIndex(h => h.label === writingSession.controlLabel);
+          } else {
+            // label 不可用时：退化为“优先找拳头/单食指/张开”来猜控制手
+            controlIdx = handInfo.findIndex(h => isFist(h.lm));
+            if(controlIdx === -1) controlIdx = handInfo.findIndex(h => isIndexOnly(h.lm));
+            if(controlIdx === -1) controlIdx = handInfo.findIndex(h => isOpenPalm(h.lm));
+          }
+
+          if(controlIdx === -1){
+            // 控制手丢失：结束会话
+            writingSession.active=false;
+            writingSession.controlLabel=null;
+            writingSession.lastControlState="none";
+            prevPt=null; smoothPt=null;
+            stateText = "停止（控制手丢失）";
+          } else {
+            const writeIdx = (controlIdx === 0) ? 1 : 0;
+            const controlLm = handInfo[controlIdx].lm;
+            const writeLm = handInfo[writeIdx].lm;
+
+            const curC = controlStateOf(controlLm);
+            const prevC = writingSession.lastControlState;
+
+            // 1) 撤回：仅在“写字会话”中，拳头->单食指
+            const undoEdge = (prevC === "fist" && curC === "index" && (now - lastUndoTs) > UNDO_COOLDOWN_MS);
+            if(undoEdge){
+              lastUndoTs = now;
+              doUndo();
+              writingSession.lastControlState = curC;
+              prevPt=null; smoothPt=null;
+              stateText = "撤回（控制手：拳头→单食指）";
+              setState(stateText);
+              renderSelectUI();
+              rafId=requestAnimationFrame(loop);
+              return;
+            }
+
+            // 2) 停笔：写字会话中，拳头->张开
+            const stopEdge = (prevC === "fist" && curC === "open");
+            if(stopEdge){
+              prevPt=null; smoothPt=null;
+              writingSession.lastControlState = curC;
+              stateText = "停笔（控制手：拳头→张开）";
+              setState(stateText);
+              renderSelectUI();
+              rafId=requestAnimationFrame(loop);
+              return;
+            }
+
+            // 3) 持续写字：控制手为拳头才画
+            if(curC === "fist"){
+              const midPx = indexMiddleMidpointPx(writeLm, W, H);
+              const sp = smoothPoint(midPx);
+              stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+
+              if(!prevPt){
+                pushUndoSnapshot();
+                prevPt = {x:sp.x,y:sp.y};
+              }
+              drawLineInterpolated(prevPt, sp, penW, penColor);
+              prevPt = {x:sp.x,y:sp.y};
+            } else {
+              // 控制手非拳头：默认不画（避免误画），并断开
+              prevPt=null; smoothPt=null;
+              if(curC === "open") stateText = "停止（控制手张开）";
+              else if(curC === "index") stateText = "停止（控制手单食指）";
+              else stateText = "停止（控制手其它姿态）";
+            }
+
+            writingSession.lastControlState = curC;
+          }
+        } else {
+          stateText = "停止（双手无拳头，未进入写字）";
+          prevPt=null; smoothPt=null;
+        }
+      } else if(handInfo.length === 1){
+        // 单手：拳头才是橡皮擦
+        writingSession.active=false;
+        writingSession.controlLabel=null;
+        writingSession.lastControlState="none";
+
+        const lm = handInfo[0].lm;
         if(isFist(lm)){
           const tip = indexTipPx(lm, W, H);
           const sp = smoothPoint(tip);
-          mode = "橡皮擦（单手拳头）";
+          stateText = "橡皮擦（单手拳头）";
 
           if(!prevPt){
             pushUndoSnapshot();
             prevPt = {x:sp.x,y:sp.y};
           }
 
-          // 插值擦除
           const dx=sp.x-prevPt.x, dy=sp.y-prevPt.y;
           const dist=Math.sqrt(dx*dx+dy*dy);
           const n=Math.max(1, Math.floor(dist/INTERP_STEP));
@@ -722,13 +743,13 @@
             eraseAt({ x:prevPt.x+dx*t, y:prevPt.y+dy*t });
           }
           prevPt = {x:sp.x,y:sp.y};
-        }else{
-          mode = "停止（单手非拳头）";
+        } else {
+          stateText = "停止（单手非拳头）";
           prevPt=null; smoothPt=null;
         }
       }
 
-      setMode(mode);
+      setState(stateText);
       syncSelText();
       renderSelectUI();
       rafId=requestAnimationFrame(loop);
@@ -738,7 +759,6 @@
       try{
         setActiveColorBtn(penColor);
         setBgButtons();
-        gestureUndoBtn.classList.toggle("on", gestureUndoEnabled);
         syncSelText();
         await initMediaPipe();
         await openCamera();
@@ -746,9 +766,9 @@
       }catch(e){
         console.error(e);
         const msg=String(e).toLowerCase();
-        if(msg.includes("permission") || msg.includes("denied")) setStatus("摄像头权限被拒绝（请在地址栏相机权限里允许）");
-        else if(msg.includes("hand_landmarker.task")) setStatus("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
-        else setStatus("初始化失败（可能是网络/CDN/WASM，打开控制台看第一条报错）");
+        if(msg.includes("permission") || msg.includes("denied")) setState("摄像头权限被拒绝（请在地址栏相机权限里允许）");
+        else if(msg.includes("hand_landmarker.task")) setState("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
+        else setState("初始化失败（网络/CDN/WASM，打开控制台看第一条报错）");
       }
     }
 
