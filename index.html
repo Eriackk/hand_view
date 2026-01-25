@@ -1,205 +1,1228 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>hand_view_whiteboard</title>
-<style>
-:root{
-  --bg:#000; --fg:#eee;
-  --card:rgba(255,255,255,0.08);
-  --card2:rgba(255,255,255,0.10);
-  --bd:rgba(255,255,255,0.12);
-  --bd2:rgba(255,255,255,0.18);
-  --bd3:rgba(255,255,255,0.28);
-  --mut:rgba(255,255,255,0.72);
-}
-*{ box-sizing:border-box; }
-html,body{ height:100%; }
-body{
-  margin:0;
-  background:var(--bg);
-  color:var(--fg);
-  overflow:hidden;
-  user-select:none;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
-}
-.app{
-  height:100vh;
-  display:grid;
-  grid-template-columns:15% 70% 15%;
-  gap:14px;
-  padding:14px;
-}
-.left,.right{ min-width:260px; }
-.center{ min-width:520px; display:flex; flex-direction:column; gap:10px; }
-.box{
-  border-radius:14px;
-  background:rgba(255,255,255,0.06);
-  border:1px solid rgba(255,255,255,0.10);
-  padding:12px;
-  height:100%;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-.boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0; }
-.panel{ flex:1; position:relative; border-radius:14px; overflow:hidden; }
-.panel canvas{ position:absolute; inset:0; width:100%; height:100%; }
-.statusbar{
-  display:flex; gap:10px; padding:10px;
-  border-radius:12px;
-  background:rgba(255,255,255,0.06);
-  border:1px solid rgba(255,255,255,0.10);
-}
-.badge{ padding:6px 10px; border-radius:999px; background:var(--card); font-size:13px; }
-.row{ display:flex; gap:10px; flex-wrap:wrap; }
-.btn{
-  padding:8px 12px;
-  border-radius:10px;
-  background:var(--card2);
-  border:1px solid var(--bd2);
-  color:#eee;
-  font-size:13px;
-  cursor:pointer;
-}
-.btn.on{ background:rgba(255,255,255,0.22); border-color:var(--bd3); }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>hand_view_whiteboard</title>
+  <style>
+    :root{
+      --bg:#000; --fg:#eee;
+      --card:rgba(255,255,255,0.08);
+      --card2:rgba(255,255,255,0.10);
+      --bd:rgba(255,255,255,0.12);
+      --bd2:rgba(255,255,255,0.18);
+      --bd3:rgba(255,255,255,0.28);
+      --mut:rgba(255,255,255,0.72);
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--fg);
+      overflow:hidden;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    }
+
+    .app{
+      height:100vh;
+      display:grid;
+      grid-template-columns: 15% 70% 15%;
+      gap:14px;
+      padding:14px;
+      align-items:stretch;
+    }
+    .left,.right{ min-width:260px; max-width:380px; }
+    .center{ min-width:520px; }
+
+    @media (max-width: 980px){
+      body{ overflow:auto; }
+      .app{ height:auto; grid-template-columns: 1fr; }
+      .left,.right,.center{ min-width:auto; max-width:none; }
+    }
+
+    .box{
+      border-radius:14px;
+      background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.10);
+      padding:12px;
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0; }
+    .help{ font-size:12.5px; color:var(--mut); line-height:1.6; margin:0; white-space:pre-wrap; }
+    .spacer{
+      flex:1;
+      border-radius:12px;
+      border:1px dashed rgba(255,255,255,0.18);
+      background:rgba(255,255,255,0.03);
+      min-height:180px;
+    }
+
+    .center{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-items:stretch;
+    }
+    .panel{
+      flex:1;
+      width:100%;
+      position:relative;
+      background:#000;
+      border-radius:14px;
+      overflow:hidden;
+      box-shadow:0 0 0 1px rgba(255,255,255,0.08) inset;
+    }
+    .panel canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+    .statusbar{
+      width:100%;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      align-items:center;
+      justify-content:flex-start;
+      padding:10px 12px;
+      border-radius:12px;
+      background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.10);
+    }
+    .badge{
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--card);
+      border:1px solid var(--bd);
+      font-size:13px;
+      color:var(--fg);
+      white-space:nowrap;
+    }
+
+    .row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .btn{
+      padding:8px 12px;
+      border-radius:10px;
+      background:var(--card2);
+      border:1px solid var(--bd2);
+      color:var(--fg);
+      font-size:13px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .btn:hover{ background:rgba(255,255,255,0.14); }
+    .btn.on{ background:rgba(255,255,255,0.18); border-color:var(--bd3); }
+    .btn:disabled{ opacity:0.45; cursor:not-allowed; }
+
+    .ctl{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      width:100%;
+      padding:10px 10px;
+      border-radius:12px;
+      background:var(--card);
+      border:1px solid var(--bd);
+    }
+    .ctl label{ font-size:13px; color:rgba(255,255,255,0.85); width:56px; }
+    input[type="range"]{ flex:1; }
+
+    .pickerWrap{
+      width:100%;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      padding:10px 10px;
+      border-radius:12px;
+      background:var(--card);
+      border:1px solid var(--bd);
+    }
+    .pickerTop{
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .swatch{
+      width:46px;
+      height:30px;
+      border-radius:8px;
+      border:1px solid rgba(255,255,255,0.18);
+      background:#30d158;
+      flex:0 0 auto;
+    }
+    .hexBadge{
+      margin-left:auto;
+      padding:6px 10px;
+      border-radius:999px;
+      background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.12);
+      font-size:13px;
+      color:#eee;
+    }
+    #svCanvas{ display:block; width:100%; height:170px; border-radius:10px; border:1px solid rgba(255,255,255,0.12); cursor:crosshair; }
+    #hCanvas{ display:block; width:100%; height:18px; border-radius:999px; border:1px solid rgba(255,255,255,0.12); cursor:pointer; }
+    .pickerHint{ font-size:12px; color:rgba(255,255,255,0.65); margin:0; }
+
+    select{
+      padding:8px 10px;
+      border-radius:8px;
+      background:var(--card2);
+      border:1px solid var(--bd2);
+      color:var(--fg);
+      font-size:13px;
+      cursor:pointer;
+      flex:1;
+    }
+    select option{ background:#1a1a1a; color:#eee; }
+  </style>
 </head>
-
 <body>
-<div class="app">
-  <div class="left"><div class="box"><p class="boxTitle">说明</p></div></div>
-
-  <div class="center">
-    <div class="panel" id="panel">
-      <canvas id="viewCanvas"></canvas>
-      <canvas id="drawCanvas"></canvas>
-      <canvas id="uiCanvas"></canvas>
+  <div class="app">
+    <div class="left">
+      <div class="box">
+        <p class="boxTitle">功能说明</p>
+        <p class="help">写字：双手且控制手为拳头时，另一只手写字；笔尖=写字手(8,12)中点；无平滑，仅简单去抖+重采样+二次曲线。
+停笔：写字时，控制手食指伸直进入停笔（断笔，不画线），停笔仍显示白色笔尖点。
+回退：停笔时，控制手食指+中指同时伸直触发一次回退（最多10步，边沿触发+冷却）。
+防打架：停笔回写字（食指→拳头）加极短等待窗口。
+橡皮擦：单手食指+中指同时伸直可用，中心=食指尖(8)，半径可调。
+导出：选择区域导出PNG（背景白/黑），选择模式暂停手势。</p>
+        <div class="spacer" title="预留区域（未来：打字等功能按钮）"></div>
+      </div>
     </div>
-    <div class="statusbar">
-      <span class="badge" id="state">初始化中</span>
-    </div>
-  </div>
 
-  <div class="right">
-    <div class="box">
-      <p class="boxTitle">控制</p>
-      <div class="row">
-        <button class="btn on" id="skeletonBtn">骨架：开</button>
+    <div class="center">
+      <div class="panel" id="panel">
+        <canvas id="viewCanvas"></canvas>
+        <canvas id="drawCanvas"></canvas>
+        <canvas id="textCanvas"></canvas>
+        <canvas id="uiCanvas"></canvas>
+      </div>
+      <div class="statusbar">
+        <span class="badge" id="state">判断：初始化中...</span>
+        <span class="badge" id="sel">选择：--</span>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="box">
+        <p class="boxTitle">颜色 / 笔宽 / 导出</p>
+
+        <div class="pickerWrap">
+          <div class="pickerTop">
+            <span style="font-size:13px;color:rgba(255,255,255,0.85);">颜色</span>
+            <div class="swatch" id="swatch"></div>
+            <span class="hexBadge" id="colText">#30d158</span>
+          </div>
+          <canvas id="svCanvas" width="640" height="340"></canvas>
+          <canvas id="hCanvas" width="640" height="36"></canvas>
+          <p class="pickerHint">提示：上方选择明度/饱和度，下方选择色相</p>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="cBlack" type="button" data-col="#000000">黑</button>
+          <button class="btn" id="cWhite" type="button" data-col="#ffffff">白</button>
+          <button class="btn" id="cRed" type="button" data-col="#ff3b30">红</button>
+          <button class="btn" id="cYellow" type="button" data-col="#ffd60a">黄</button>
+          <button class="btn" id="cBlue" type="button" data-col="#0a84ff">蓝</button>
+          <button class="btn" id="cGreen" type="button" data-col="#30d158">绿</button>
+        </div>
+
+        <div class="ctl">
+          <label>笔宽</label>
+          <input id="penRange" type="range" min="1" max="30" step="0.5" value="2.5" />
+          <span class="badge" id="penVal">2.5</span>
+        </div>
+
+        <div class="ctl">
+          <label>橡皮</label>
+          <input id="eraserRange" type="range" min="6" max="80" step="1" value="26" />
+          <span class="badge" id="eraserVal">26</span>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="clearBtn" type="button">清空</button>
+          <button class="btn on" id="mirrorBtn" type="button">镜像：开</button>
+          <button class="btn on" id="skeletonBtn" type="button">骨架：显示</button>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="selectBtn" type="button">选择区域导出</button>
+          <button class="btn" id="bgWhiteBtn" type="button">背景：白</button>
+          <button class="btn" id="bgBlackBtn" type="button">背景：黑</button>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="exportBtn" type="button" disabled>导出 PNG</button>
+          <button class="btn" id="cancelSelectBtn" type="button" disabled>取消选择</button>
+        </div>
+
+        <p class="boxTitle" style="margin-top:10px;">文字工具</p>
+
+        <div class="row">
+          <button class="btn" id="addTextBtn" type="button">添加文字</button>
+        </div>
+
+        <div class="ctl">
+          <label>字号</label>
+          <input id="fontSizeRange" type="range" min="12" max="72" step="2" value="32" />
+          <span class="badge" id="fontSizeVal">32</span>
+        </div>
+
+        <div class="row">
+          <button class="btn" id="tBlack" type="button" data-col="#000000">黑</button>
+          <button class="btn" id="tWhite" type="button" data-col="#ffffff">白</button>
+          <button class="btn on" id="tRed" type="button" data-col="#ff3b30">红</button>
+          <button class="btn" id="tYellow" type="button" data-col="#ffd60a">黄</button>
+          <button class="btn" id="tBlue" type="button" data-col="#0a84ff">蓝</button>
+          <button class="btn" id="tGreen" type="button" data-col="#30d158">绿</button>
+        </div>
+
+        <div class="ctl">
+          <label>字体</label>
+          <select id="fontSelect">
+            <option value="PingFang SC, Microsoft YaHei, sans-serif">中文（黑体）</option>
+            <option value="Arial, Helvetica, sans-serif">英文（Arial）</option>
+            <option value="Roboto, sans-serif">英文（Roboto）</option>
+          </select>
+        </div>
       </div>
     </div>
   </div>
-</div>
 
-<video id="video" playsinline style="display:none;"></video>
+  <video id="video" playsinline style="display:none;"></video>
 
-<script type="module">
-const panel = document.getElementById("panel");
-const viewCanvas = document.getElementById("viewCanvas");
-const drawCanvas = document.getElementById("drawCanvas");
-const uiCanvas = document.getElementById("uiCanvas");
-const vctx = viewCanvas.getContext("2d");
-const dctx = drawCanvas.getContext("2d");
-const uctx = uiCanvas.getContext("2d");
-const video = document.getElementById("video");
-const stateEl = document.getElementById("state");
-const skeletonBtn = document.getElementById("skeletonBtn");
+  <script type="module">
+    const panel = document.getElementById("panel");
+    const viewCanvas = document.getElementById("viewCanvas");
+    const drawCanvas = document.getElementById("drawCanvas");
+    const textCanvas = document.getElementById("textCanvas");
+    const uiCanvas = document.getElementById("uiCanvas");
+    const vctx = viewCanvas.getContext("2d");
+    const dctx = drawCanvas.getContext("2d");
+    const tctx = textCanvas.getContext("2d");
+    const uctx = uiCanvas.getContext("2d");
+    const video = document.getElementById("video");
 
-let showSkeleton = true;
-skeletonBtn.onclick = ()=>{
-  showSkeleton = !showSkeleton;
-  skeletonBtn.textContent = showSkeleton ? "骨架：开" : "骨架：关";
-  skeletonBtn.classList.toggle("on", showSkeleton);
-};
+    const stateEl = document.getElementById("state");
+    const selEl = document.getElementById("sel");
 
-const DPR = Math.max(1, devicePixelRatio || 1);
-let penW = 2.8;
-let penColor = "#30d158";
-let prevPt=null, prevMid=null;
+    const clearBtn = document.getElementById("clearBtn");
+    const mirrorBtn = document.getElementById("mirrorBtn");
+    const skeletonBtn = document.getElementById("skeletonBtn");
 
-function resize(){
-  const r=panel.getBoundingClientRect();
-  const W=r.width*DPR, H=r.height*DPR;
-  [viewCanvas,drawCanvas,uiCanvas].forEach(c=>{
-    if(c.width!==W){ c.width=W; c.height=H; }
-  });
-}
+    const penRange = document.getElementById("penRange");
+    const penVal = document.getElementById("penVal");
 
-function drawPenTip(pt){
-  uctx.save();
-  uctx.fillStyle="rgba(255,255,255,0.95)";
-  uctx.beginPath();
-  uctx.arc(pt.x,pt.y,4.5*DPR,0,Math.PI*2);
-  uctx.fill();
-  uctx.restore();
-}
+    const eraserRange = document.getElementById("eraserRange");
+    const eraserVal = document.getElementById("eraserVal");
 
-function addStroke(p){
-  if(!prevPt){
-    prevPt=p; prevMid=p; return;
-  }
-  const mid={x:(p.x+prevPt.x)/2,y:(p.y+prevPt.y)/2};
-  dctx.strokeStyle=penColor;
-  dctx.lineWidth=penW*DPR;
-  dctx.lineCap="round";
-  dctx.lineJoin="round";
-  dctx.beginPath();
-  dctx.moveTo(prevMid.x,prevMid.y);
-  dctx.quadraticCurveTo(prevPt.x,prevPt.y,mid.x,mid.y);
-  dctx.stroke();
-  prevPt=p; prevMid=mid;
-}
+    const colText = document.getElementById("colText");
+    const swatch = document.getElementById("swatch");
+    const colorBtns = ["cBlack","cWhite","cRed","cYellow","cBlue","cGreen"].map(id => document.getElementById(id));
 
-function drawSkeleton(lm,w,h){
-  if(!showSkeleton) return;
-  const pts=lm.map(p=>({x:p.x*w,y:p.y*h}));
-  vctx.save();
-  vctx.strokeStyle="rgba(120,160,190,0.55)";
-  vctx.lineWidth=2.2*DPR;
-  [[0,5],[5,9],[9,13],[13,17],[17,0]].forEach(([a,b])=>{
-    vctx.beginPath(); vctx.moveTo(pts[a].x,pts[a].y); vctx.lineTo(pts[b].x,pts[b].y); vctx.stroke();
-  });
-  vctx.strokeStyle="rgba(160,190,210,0.65)";
-  vctx.lineWidth=3.4*DPR;
-  [[0,1],[1,2],[2,3],[3,4],[5,6],[6,7],[7,8],[9,10],[10,11],[11,12],[13,14],[14,15],[15,16],[17,18],[18,19],[19,20]].forEach(([a,b])=>{
-    vctx.beginPath(); vctx.moveTo(pts[a].x,pts[a].y); vctx.lineTo(pts[b].x,pts[b].y); vctx.stroke();
-  });
-  vctx.fillStyle="rgba(200,220,235,0.85)";
-  pts.forEach(p=>{ vctx.beginPath(); vctx.arc(p.x,p.y,3.5*DPR,0,Math.PI*2); vctx.fill(); });
-  vctx.restore();
-}
+    const selectBtn = document.getElementById("selectBtn");
+    const bgWhiteBtn = document.getElementById("bgWhiteBtn");
+    const bgBlackBtn = document.getElementById("bgBlackBtn");
+    const exportBtn = document.getElementById("exportBtn");
+    const cancelSelectBtn = document.getElementById("cancelSelectBtn");
 
-async function main(){
-  const vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
-  const {HandLandmarker,FilesetResolver}=vision;
-  const fs = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm");
-  const hl = await HandLandmarker.createFromOptions(fs,{
-    baseOptions:{modelAssetPath:"./hand_landmarker.task"},
-    runningMode:"VIDEO", numHands:2
-  });
-  const stream = await navigator.mediaDevices.getUserMedia({video:true});
-  video.srcObject=stream; await video.play();
+    const svCanvas = document.getElementById("svCanvas");
+    const hCanvas = document.getElementById("hCanvas");
+    const svctx = svCanvas.getContext("2d");
+    const hctx = hCanvas.getContext("2d");
 
-  function loop(){
-    resize();
-    vctx.clearRect(0,0,viewCanvas.width,viewCanvas.height);
-    vctx.drawImage(video,0,0,viewCanvas.width,viewCanvas.height);
-    const res=hl.detectForVideo(video,performance.now());
-    if(res.landmarks){
-      res.landmarks.forEach(lm=>{
-        drawSkeleton(lm,viewCanvas.width,viewCanvas.height);
-        const p8=lm[8], p12=lm[12];
-        const mid={x:(p8.x+p12.x)/2*viewCanvas.width,y:(p8.y+p12.y)/2*viewCanvas.height};
-        addStroke(mid);
-        drawPenTip(mid);
+    const addTextBtn = document.getElementById("addTextBtn");
+    const fontSizeRange = document.getElementById("fontSizeRange");
+    const fontSizeVal = document.getElementById("fontSizeVal");
+    const fontSelect = document.getElementById("fontSelect");
+    const textColorBtns = ["tBlack","tWhite","tRed","tYellow","tBlue","tGreen"].map(id => document.getElementById(id));
+
+    function setState(t){ stateEl.textContent = "判断：" + t; }
+    function setSel(t){ selEl.textContent = "选择：" + t; }
+
+    let stream=null, rafId=null;
+    let vision=null, FilesetResolver=null, HandLandmarker=null;
+    let handLandmarker=null;
+
+    const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+    let mirrorOn = true;
+    let skeletonOn = true;
+
+    mirrorBtn.addEventListener("click", ()=>{
+      mirrorOn = !mirrorOn;
+      mirrorBtn.textContent = mirrorOn ? "镜像：开" : "镜像：关";
+      mirrorBtn.classList.toggle("on", mirrorOn);
+      resetStroke();
+    });
+
+    skeletonBtn.addEventListener("click", ()=>{
+      skeletonOn = !skeletonOn;
+      skeletonBtn.textContent = skeletonOn ? "骨架：显示" : "骨架：隐藏";
+      skeletonBtn.classList.toggle("on", skeletonOn);
+    });
+
+    const HOLD_MS = 420;
+    const INTERP_STEP = 1.0;
+    const DEBOUNCE_PX = 1.6;
+
+    let eraserR = Number(eraserRange.value);
+
+    const MAX_UNDO = 10;
+    const UNDO_COOLDOWN_MS = 350;
+    let lastUndoTs = -Infinity;
+    const undoStack = [];
+
+    let selecting=false;
+    let bgColor="#ffffff";
+    let sel=null;
+    let drag=null;
+
+    const CTRL = { WRITING:"WRITING", PAUSED:"PAUSED", RESUME_DELAY:"RESUME_DELAY", IDLE:"IDLE" };
+    const RESUME_DELAY_MS = 110;
+    let ctrlMode = CTRL.IDLE;
+    let resumeStartTs = -Infinity;
+
+    let writingSession = { active:false, controlLabel:null };
+    let prevCtrlGesture = "none";
+
+    // 文字相关
+    let textMode = false;
+    let textFontSize = 32;
+    let textColor = "#ff3b30";
+    let textFont = "PingFang SC, Microsoft YaHei, sans-serif";
+    const texts = [];
+
+    function resizeCanvasesToPanel(){
+      const rect = panel.getBoundingClientRect();
+      const W = Math.max(2, Math.round(rect.width * DPR));
+      const H = Math.max(2, Math.round(rect.height * DPR));
+      if(viewCanvas.width!==W || viewCanvas.height!==H){ viewCanvas.width=W; viewCanvas.height=H; }
+      if(drawCanvas.width!==W || drawCanvas.height!==H){ drawCanvas.width=W; drawCanvas.height=H; }
+      if(textCanvas.width!==W || textCanvas.height!==H){ textCanvas.width=W; textCanvas.height=H; }
+      if(uiCanvas.width!==W || uiCanvas.height!==H){ uiCanvas.width=W; uiCanvas.height=H; }
+      renderAllTexts();
+    }
+
+    function clamp(v,a,b){ return Math.max(a, Math.min(b, v)); }
+
+    function calcCoverTransform(srcW, srcH, dstW, dstH){
+      const s = Math.max(dstW/srcW, dstH/srcH);
+      const dw = srcW * s;
+      const dh = srcH * s;
+      const dx = (dstW - dw) * 0.5;
+      const dy = (dstH - dh) * 0.5;
+      return { s, dx, dy, dw, dh };
+    }
+
+    function landmarkToCanvas(pt, videoW, videoH, tf){
+      const vx = (mirrorOn ? (1 - pt.x) : pt.x) * videoW;
+      const vy = pt.y * videoH;
+      return { x: vx * tf.s + tf.dx, y: vy * tf.s + tf.dy };
+    }
+
+    let prevPt=null;
+    let prevMid=null;
+    let lastSeenTs=0;
+    function resetStroke(){ prevPt=null; prevMid=null; }
+
+    function pushUndoSnapshot(){
+      try{
+        const img = dctx.getImageData(0,0,drawCanvas.width,drawCanvas.height);
+        undoStack.push(img);
+        if(undoStack.length>MAX_UNDO) undoStack.shift();
+      }catch(e){}
+    }
+    function doUndo(){
+      if(!undoStack.length) return;
+      const img = undoStack.pop();
+      dctx.putImageData(img,0,0);
+      resetStroke();
+    }
+
+    function strokeStyle(width,color){
+      dctx.save();
+      dctx.globalCompositeOperation="source-over";
+      dctx.strokeStyle=color;
+      dctx.lineWidth=width;
+      dctx.lineCap="round";
+      dctx.lineJoin="round";
+    }
+
+    function addStrokePoint(p, width, color){
+      if(!prevPt){
+        pushUndoSnapshot();
+        prevPt = {x:p.x,y:p.y};
+        prevMid = {x:p.x,y:p.y};
+        return;
+      }
+      const mid = { x:(prevPt.x+p.x)*0.5, y:(prevPt.y+p.y)*0.5 };
+
+      strokeStyle(width,color);
+      dctx.beginPath();
+      dctx.moveTo(prevMid.x, prevMid.y);
+      dctx.quadraticCurveTo(prevPt.x, prevPt.y, mid.x, mid.y);
+      dctx.stroke();
+      dctx.restore();
+
+      prevPt = {x:p.x,y:p.y};
+      prevMid = mid;
+    }
+
+    function addStrokePointResampled(from, to, width, color){
+      const dx=to.x-from.x, dy=to.y-from.y;
+      const dist=Math.hypot(dx,dy);
+      const n=Math.max(1, Math.floor(dist/INTERP_STEP));
+      for(let i=1;i<=n;i++){
+        const t=i/n;
+        addStrokePoint({x:from.x+dx*t, y:from.y+dy*t}, width, color);
+      }
+    }
+
+    function eraseAt(pt){
+      dctx.save();
+      dctx.globalCompositeOperation="destination-out";
+      dctx.beginPath();
+      dctx.arc(pt.x, pt.y, eraserR, 0, Math.PI*2);
+      dctx.fill();
+      dctx.restore();
+    }
+
+    function fingerExtended(lm,mcp,pip,tip){
+      return (lm[tip].y < lm[pip].y) && (lm[tip].y < lm[mcp].y);
+    }
+    function isFist(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return !index && !middle && !ring && !pinky;
+    }
+    function isIndexOnly(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return index && !middle && !ring && !pinky;
+    }
+    function isIndexMiddleOnly(lm){
+      const index = fingerExtended(lm,5,6,8);
+      const middle = fingerExtended(lm,9,10,12);
+      const ring = fingerExtended(lm,13,14,16);
+      const pinky = fingerExtended(lm,17,18,20);
+      return index && middle && !ring && !pinky;
+    }
+    function ctrlGesture(lm){
+      if(isFist(lm)) return "fist";
+      if(isIndexMiddleOnly(lm)) return "indexmiddle";
+      if(isIndexOnly(lm)) return "index";
+      return "other";
+    }
+
+    function getHandLabel(result, i){
+      const hs = result.handednesses || result.handedness || null;
+      const item = hs && hs[i] && hs[i][0] ? hs[i][0] : null;
+      return item ? (item.categoryName || item.displayName || null) : null;
+    }
+
+    function pickControlIndex(handInfo){
+      if(writingSession.active && writingSession.controlLabel){
+        const idx = handInfo.findIndex(h => h.label === writingSession.controlLabel);
+        if(idx !== -1) return idx;
+      }
+      let idx = handInfo.findIndex(h => isFist(h.lm));
+      if(idx !== -1) return idx;
+      idx = handInfo.findIndex(h => isIndexOnly(h.lm) || isIndexMiddleOnly(h.lm));
+      if(idx !== -1) return idx;
+      return 0;
+    }
+
+    let penW = Number(penRange.value);
+    let penColor = "#30d158";
+
+    function setBgButtons(){
+      bgWhiteBtn.classList.toggle("on", bgColor==="#ffffff");
+      bgBlackBtn.classList.toggle("on", bgColor==="#000000");
+    }
+    function syncSelText(){
+      penVal.textContent = penW.toFixed(1);
+      eraserVal.textContent = String(Math.round(eraserR));
+      colText.textContent = penColor.toLowerCase();
+      swatch.style.background = penColor;
+      fontSizeVal.textContent = String(textFontSize);
+      setSel(`笔宽 ${penW.toFixed(1)} | 橡皮 ${Math.round(eraserR)} | 颜色 ${penColor.toLowerCase()} | 背景 ${bgColor==="#ffffff"?"白":"黑"} | 镜像 ${mirrorOn?"开":"关"} | 选择模式 ${selecting?"开":"关"} | 文字模式 ${textMode?"开":"关"}`);
+    }
+
+    penRange.addEventListener("input", ()=>{ penW = Number(penRange.value); syncSelText(); });
+    eraserRange.addEventListener("input", ()=>{ eraserR = Number(eraserRange.value); syncSelText(); });
+    fontSizeRange.addEventListener("input", ()=>{ textFontSize = Number(fontSizeRange.value); syncSelText(); });
+    fontSelect.addEventListener("change", ()=>{ textFont = fontSelect.value; });
+
+    function setActiveColorBtn(hex){
+      for(const b of colorBtns){
+        b.classList.toggle("on", (b.dataset.col||"").toLowerCase()===hex.toLowerCase());
+      }
+    }
+    for(const b of colorBtns){
+      b.addEventListener("click", ()=>{
+        penColor = b.dataset.col;
+        setActiveColorBtn(penColor);
+        const rgb = hexToRgb(penColor);
+        const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        H = hsv.h; S = hsv.s; V = hsv.v;
+        renderHue(); renderSV(); syncSelText();
       });
     }
-    requestAnimationFrame(loop);
-  }
-  loop();
-}
-main();
-</script>
+
+    function setActiveTextColorBtn(hex){
+      for(const b of textColorBtns){
+        b.classList.toggle("on", (b.dataset.col||"").toLowerCase()===hex.toLowerCase());
+      }
+    }
+    for(const b of textColorBtns){
+      b.addEventListener("click", ()=>{
+        textColor = b.dataset.col;
+        setActiveTextColorBtn(textColor);
+      });
+    }
+
+    function getCanvasPointFromMouseEvent(ev){
+      const rect = uiCanvas.getBoundingClientRect();
+      const x = (ev.clientX-rect.left) * (uiCanvas.width/rect.width);
+      const y = (ev.clientY-rect.top) * (uiCanvas.height/rect.height);
+      return {x,y};
+    }
+    function normalizeSel(s){
+      if(!s) return null;
+      const x0=Math.min(s.x0,s.x1), y0=Math.min(s.y0,s.y1);
+      const x1=Math.max(s.x0,s.x1), y1=Math.max(s.y0,s.y1);
+      const W=uiCanvas.width, H=uiCanvas.height;
+      return { x0:clamp(x0,0,W), y0:clamp(y0,0,H), x1:clamp(x1,0,W), y1:clamp(y1,0,H) };
+    }
+    function renderSelectUI(){
+      const W=uiCanvas.width, H=uiCanvas.height;
+      uctx.clearRect(0,0,W,H);
+      if(!selecting || !sel) return;
+      const s=normalizeSel(sel);
+      if(!s) return;
+      uctx.save();
+      uctx.fillStyle="rgba(0,0,0,0.45)";
+      uctx.fillRect(0,0,W,H);
+      uctx.clearRect(s.x0,s.y0,s.x1-s.x0,s.y1-s.y0);
+      uctx.strokeStyle="rgba(255,255,255,0.85)";
+      uctx.lineWidth=2;
+      uctx.strokeRect(s.x0+1,s.y0+1,(s.x1-s.x0)-2,(s.y1-s.y0)-2);
+      uctx.restore();
+    }
+    function enterSelectMode(){
+      selecting=true; sel=null; drag=null;
+      exportBtn.disabled=true;
+      cancelSelectBtn.disabled=false;
+      selectBtn.classList.add("on");
+      setState("选择区域（手势暂停）");
+      renderSelectUI();
+      syncSelText();
+    }
+    function exitSelectMode(){
+      selecting=false; sel=null; drag=null;
+      exportBtn.disabled=true;
+      cancelSelectBtn.disabled=true;
+      selectBtn.classList.remove("on");
+      renderSelectUI();
+      syncSelText();
+    }
+    selectBtn.addEventListener("click", ()=>{ selecting?exitSelectMode():enterSelectMode(); });
+    cancelSelectBtn.addEventListener("click", ()=>exitSelectMode());
+
+    uiCanvas.addEventListener("mousedown", (ev)=>{
+      if(textMode){
+        const p=getCanvasPointFromMouseEvent(ev);
+        const input = document.createElement("input");
+        input.type = "text";
+        input.style.position = "fixed";
+        input.style.left = ev.clientX + "px";
+        input.style.top = ev.clientY + "px";
+        input.style.fontSize = "16px";
+        input.style.padding = "4px";
+        input.style.zIndex = "9999";
+        document.body.appendChild(input);
+        input.focus();
+        
+        input.addEventListener("keydown", (e)=>{
+          if(e.key === "Enter"){
+            const txt = input.value.trim();
+            if(txt){
+              texts.push({ text:txt, x:p.x, y:p.y, size:textFontSize, color:textColor, font:textFont });
+              renderAllTexts();
+            }
+            input.remove();
+            textMode = false;
+            addTextBtn.classList.remove("on");
+            syncSelText();
+          }
+          if(e.key === "Escape"){
+            input.remove();
+            textMode = false;
+            addTextBtn.classList.remove("on");
+            syncSelText();
+          }
+        });
+        input.addEventListener("blur", ()=>{
+          setTimeout(()=>{
+            const txt = input.value.trim();
+            if(txt){
+              texts.push({ text:txt, x:p.x, y:p.y, size:textFontSize, color:textColor, font:textFont });
+              renderAllTexts();
+            }
+            input.remove();
+            textMode = false;
+            addTextBtn.classList.remove("on");
+            syncSelText();
+          }, 100);
+        });
+        return;
+      }
+      if(!selecting) return;
+      const p=getCanvasPointFromMouseEvent(ev);
+      drag={startX:p.x,startY:p.y};
+      sel={x0:p.x,y0:p.y,x1:p.x,y1:p.y};
+      renderSelectUI();
+    });
+    window.addEventListener("mousemove",(ev)=>{
+      if(!selecting || !drag) return;
+      const p=getCanvasPointFromMouseEvent(ev);
+      sel.x1=p.x; sel.y1=p.y;
+      renderSelectUI();
+    });
+    window.addEventListener("mouseup", ()=>{
+      if(!selecting || !drag) return;
+      drag=null;
+      const s=normalizeSel(sel);
+      const w=s?(s.x1-s.x0):0, h=s?(s.y1-s.y0):0;
+      exportBtn.disabled = !(w>=10 && h>=10);
+      renderSelectUI();
+    });
+
+    bgWhiteBtn.addEventListener("click", ()=>{ bgColor="#ffffff"; setBgButtons(); syncSelText(); });
+    bgBlackBtn.addEventListener("click", ()=>{ bgColor="#000000"; setBgButtons(); syncSelText(); });
+
+    addTextBtn.addEventListener("click", ()=>{
+      textMode = !textMode;
+      addTextBtn.classList.toggle("on", textMode);
+      if(textMode){
+        setState("点击画布添加文字");
+      }
+      syncSelText();
+    });
+
+    function renderAllTexts(){
+      const W=textCanvas.width, H=textCanvas.height;
+      tctx.clearRect(0,0,W,H);
+      for(const t of texts){
+        tctx.save();
+        tctx.font = `${t.size*DPR}px ${t.font}`;
+        tctx.fillStyle = t.color;
+        tctx.textBaseline = "top";
+        tctx.fillText(t.text, t.x, t.y);
+        tctx.restore();
+      }
+    }
+
+    function downloadBlob(blob, filename){
+      const a=document.createElement("a");
+      const url=URL.createObjectURL(blob);
+      a.href=url; a.download=filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 5000);
+    }
+    exportBtn.addEventListener("click", ()=>{
+      if(!selecting || !sel) return;
+      const s=normalizeSel(sel);
+      if(!s) return;
+      const w=Math.max(1, Math.round(s.x1-s.x0));
+      const h=Math.max(1, Math.round(s.y1-s.y0));
+      const off=document.createElement("canvas");
+      off.width=w; off.height=h;
+      const octx=off.getContext("2d");
+      octx.fillStyle=bgColor;
+      octx.fillRect(0,0,w,h);
+      octx.drawImage(drawCanvas, s.x0,s.y0,w,h, 0,0,w,h);
+      octx.drawImage(textCanvas, s.x0,s.y0,w,h, 0,0,w,h);
+      const ts=new Date();
+      const name=`note_${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,"0")}${String(ts.getDate()).padStart(2,"0")}_${String(ts.getHours()).padStart(2,"0")}${String(ts.getMinutes()).padStart(2,"0")}${String(ts.getSeconds()).padStart(2,"0")}.png`;
+      off.toBlob((blob)=>{ if(blob) downloadBlob(blob,name); }, "image/png");
+    });
+
+    clearBtn.addEventListener("click", ()=>{
+      dctx.clearRect(0,0,drawCanvas.width,drawCanvas.height);
+      tctx.clearRect(0,0,textCanvas.width,textCanvas.height);
+      texts.length = 0;
+      undoStack.length=0;
+      resetStroke();
+      sel=null; renderSelectUI();
+      exportBtn.disabled=true;
+      writingSession.active=false;
+      writingSession.controlLabel=null;
+      ctrlMode = CTRL.IDLE;
+      prevCtrlGesture="none";
+      setState("已清空");
+    });
+
+    function hsvToRgb(h,s,v){
+      const c=v*s;
+      const x=c*(1-Math.abs((h/60)%2-1));
+      const m=v-c;
+      let r=0,g=0,b=0;
+      if(h<60){ r=c; g=x; b=0; }
+      else if(h<120){ r=x; g=c; b=0; }
+      else if(h<180){ r=0; g=c; b=x; }
+      else if(h<240){ r=0; g=x; b=c; }
+      else if(h<300){ r=x; g=0; b=c; }
+      else{ r=c; g=0; b=x; }
+      return { r:Math.round((r+m)*255), g:Math.round((g+m)*255), b:Math.round((b+m)*255) };
+    }
+    function rgbToHex(r,g,b){
+      const to = (n)=>n.toString(16).padStart(2,"0");
+      return "#" + to(r) + to(g) + to(b);
+    }
+    function hexToRgb(hex){
+      const h=hex.replace("#","").trim();
+      const n=parseInt(h.length===3 ? h.split("").map(x=>x+x).join("") : h, 16);
+      return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+    }
+    function rgbToHsv(r,g,b){
+      r/=255; g/=255; b/=255;
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+      const d=mx-mn;
+      let h=0;
+      if(d===0) h=0;
+      else if(mx===r) h=60*(((g-b)/d)%6);
+      else if(mx===g) h=60*(((b-r)/d)+2);
+      else h=60*(((r-g)/d)+4);
+      if(h<0) h+=360;
+      const s = mx===0 ? 0 : d/mx;
+      const v = mx;
+      return { h, s, v };
+    }
+
+    let H=135, S=0.75, V=0.82;
+
+    function renderHue(){
+      const w=hCanvas.width, h=hCanvas.height;
+      const img=hctx.createImageData(w,h);
+      for(let x=0;x<w;x++){
+        const hh = (x/(w-1))*360;
+        const rgb = hsvToRgb(hh,1,1);
+        for(let y=0;y<h;y++){
+          const i=(y*w+x)*4;
+          img.data[i]=rgb.r; img.data[i+1]=rgb.g; img.data[i+2]=rgb.b; img.data[i+3]=255;
+        }
+      }
+      hctx.putImageData(img,0,0);
+      const cx = (H/360)*(w-1);
+      hctx.save();
+      hctx.strokeStyle="rgba(255,255,255,0.9)";
+      hctx.lineWidth=2;
+      hctx.beginPath();
+      hctx.moveTo(cx,0); hctx.lineTo(cx,h);
+      hctx.stroke();
+      hctx.restore();
+    }
+
+    function renderSV(){
+      const w=svCanvas.width, h=svCanvas.height;
+      const img=svctx.createImageData(w,h);
+      for(let y=0;y<h;y++){
+        const vv = 1 - (y/(h-1));
+        for(let x=0;x<w;x++){
+          const ss = x/(w-1);
+          const rgb = hsvToRgb(H, ss, vv);
+          const i=(y*w+x)*4;
+          img.data[i]=rgb.r; img.data[i+1]=rgb.g; img.data[i+2]=rgb.b; img.data[i+3]=255;
+        }
+      }
+      svctx.putImageData(img,0,0);
+      const cx = S*(w-1);
+      const cy = (1-V)*(h-1);
+      svctx.save();
+      svctx.strokeStyle="rgba(255,255,255,0.95)";
+      svctx.lineWidth=3;
+      svctx.beginPath();
+      svctx.arc(cx,cy,10,0,Math.PI*2);
+      svctx.stroke();
+      svctx.restore();
+    }
+
+    function applyHSVToPen(){
+      const rgb = hsvToRgb(H,S,V);
+      penColor = rgbToHex(rgb.r,rgb.g,rgb.b);
+      setActiveColorBtn(penColor);
+      syncSelText();
+    }
+
+    function canvasPos(ev, c){
+      const r=c.getBoundingClientRect();
+      return {
+        x: (ev.clientX - r.left) * (c.width / r.width),
+        y: (ev.clientY - r.top) * (c.height / r.height)
+      };
+    }
+
+    let draggingSV=false, draggingH=false;
+    svCanvas.addEventListener("mousedown",(ev)=>{ draggingSV=true; const p=canvasPos(ev,svCanvas); S=clamp(p.x/(svCanvas.width-1),0,1); V=clamp(1-p.y/(svCanvas.height-1),0,1); renderSV(); applyHSVToPen(); });
+    hCanvas.addEventListener("mousedown",(ev)=>{ draggingH=true; const p=canvasPos(ev,hCanvas); H=clamp((p.x/(hCanvas.width-1))*360,0,360); renderHue(); renderSV(); applyHSVToPen(); });
+    window.addEventListener("mousemove",(ev)=>{
+      if(draggingSV){
+        const p=canvasPos(ev,svCanvas);
+        S=clamp(p.x/(svCanvas.width-1),0,1);
+        V=clamp(1-p.y/(svCanvas.height-1),0,1);
+        renderSV(); applyHSVToPen();
+      }
+      if(draggingH){
+        const p=canvasPos(ev,hCanvas);
+        H=clamp((p.x/(hCanvas.width-1))*360,0,360);
+        renderHue(); renderSV(); applyHSVToPen();
+      }
+    });
+    window.addEventListener("mouseup",()=>{ draggingSV=false; draggingH=false; });
+
+    function drawSkeleton(handLm, videoW, videoH, tf){
+      if(!skeletonOn) return;
+      
+      const pts = handLm.map(p => landmarkToCanvas(p, videoW, videoH, tf));
+
+      const PALM_EDGES = [[0,5],[5,9],[9,13],[13,17],[17,0]];
+      const FINGER_EDGES = [
+        [0,1],[1,2],[2,3],[3,4],
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20]
+      ];
+
+      vctx.save();
+      vctx.lineCap="round";
+      vctx.lineJoin="round";
+
+      const palmLineW = 2.0 * DPR;
+      const fingerLineW = 3.5 * DPR;
+      const dotR = 5.0 * DPR;
+
+      vctx.strokeStyle = "rgba(100,200,255,0.7)";
+      vctx.lineWidth = palmLineW;
+      vctx.beginPath();
+      for(const [a,b] of PALM_EDGES){
+        const pa=pts[a], pb=pts[b];
+        vctx.moveTo(pa.x, pa.y);
+        vctx.lineTo(pb.x, pb.y);
+      }
+      vctx.stroke();
+
+      vctx.strokeStyle = "rgba(80,180,255,0.85)";
+      vctx.lineWidth = fingerLineW;
+      vctx.beginPath();
+      for(const [a,b] of FINGER_EDGES){
+        const pa=pts[a], pb=pts[b];
+        vctx.moveTo(pa.x, pa.y);
+        vctx.lineTo(pb.x, pb.y);
+      }
+      vctx.stroke();
+
+      for(const p of pts){
+        const grad = vctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, dotR);
+        grad.addColorStop(0, "rgba(150,220,255,0.95)");
+        grad.addColorStop(1, "rgba(80,180,255,0.7)");
+        vctx.fillStyle = grad;
+        vctx.beginPath();
+        vctx.arc(p.x,p.y,dotR,0,Math.PI*2);
+        vctx.fill();
+        vctx.strokeStyle="rgba(255,255,255,0.4)";
+        vctx.lineWidth=1.5*DPR;
+        vctx.stroke();
+      }
+
+      vctx.restore();
+    }
+
+    function drawPenTipDot(pt){
+      if(selecting || textMode) return;
+      uctx.save();
+      uctx.fillStyle="rgba(255,255,255,0.95)";
+      uctx.beginPath();
+      uctx.arc(pt.x, pt.y, 5.0*DPR, 0, Math.PI*2);
+      uctx.fill();
+      uctx.restore();
+    }
+
+    async function initMediaPipe(){
+      setState("加载 MediaPipe...");
+      vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
+      ({ FilesetResolver, HandLandmarker } = vision);
+      const fileset = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm");
+      handLandmarker = await HandLandmarker.createFromOptions(fileset, {
+        baseOptions:{ modelAssetPath:"./hand_landmarker.task" },
+        runningMode:"VIDEO",
+        numHands:2,
+        minHandDetectionConfidence:0.5,
+        minHandPresenceConfidence:0.5,
+        minTrackingConfidence:0.5
+      });
+      setState("MediaPipe 就绪");
+    }
+
+    async function openCamera(){
+      setState("请求摄像头权限中...");
+      stream = await navigator.mediaDevices.getUserMedia({
+        video:{ facingMode:"user", width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30,max:60} },
+        audio:false
+      });
+      video.srcObject = stream;
+      await video.play();
+      setState("运行中");
+    }
+
+    function loop(){
+      resizeCanvasesToPanel();
+      const W=viewCanvas.width, H=viewCanvas.height;
+
+      const now = performance.now();
+      const result = handLandmarker.detectForVideo(video, now);
+      const hands = (result.landmarks && result.landmarks.length) ? result.landmarks : [];
+
+      const videoW = video.videoWidth || 1280;
+      const videoH = video.videoHeight || 720;
+      const tf = calcCoverTransform(videoW, videoH, W, H);
+
+      vctx.save();
+      vctx.clearRect(0,0,W,H);
+      vctx.fillStyle="#000";
+      vctx.fillRect(0,0,W,H);
+      if(mirrorOn){
+        vctx.translate(W,0);
+        vctx.scale(-1,1);
+        vctx.drawImage(video, tf.dx, tf.dy, tf.dw, tf.dh);
+      }else{
+        vctx.drawImage(video, tf.dx, tf.dy, tf.dw, tf.dh);
+      }
+      vctx.restore();
+
+      if(hands.length){
+        for(const lm of hands) drawSkeleton(lm, videoW, videoH, tf);
+      }
+
+      const blockGesture = selecting || textMode;
+      if(!hands.length){
+        if(now - lastSeenTs > HOLD_MS) resetStroke();
+        writingSession.active=false;
+        writingSession.controlLabel=null;
+        ctrlMode = CTRL.IDLE;
+        prevCtrlGesture="none";
+        setState(selecting ? "选择区域（手势暂停）" : (textMode ? "点击画布添加文字" : "未检测到手"));
+        renderSelectUI();
+        lastSeenTs = now;
+        rafId=requestAnimationFrame(loop);
+        return;
+      }
+      lastSeenTs = now;
+
+      if(blockGesture){
+        setState(selecting ? "选择区域（手势暂停）" : "点击画布添加文字");
+        renderSelectUI();
+        rafId=requestAnimationFrame(loop);
+        return;
+      }
+
+      const handInfo = hands.map((lm,i)=>({ lm, label:getHandLabel(result,i) }));
+      let stateText = "等待手势";
+
+      renderSelectUI();
+
+      if(handInfo.length >= 2){
+        if(!writingSession.active){
+          const fistIdx = handInfo.findIndex(h => isFist(h.lm));
+          if(fistIdx !== -1){
+            writingSession.active=true;
+            writingSession.controlLabel = handInfo[fistIdx].label;
+            ctrlMode = CTRL.WRITING;
+            prevCtrlGesture="fist";
+            resetStroke();
+          }else{
+            ctrlMode = CTRL.IDLE;
+          }
+        }
+
+        const controlIdx = pickControlIndex(handInfo);
+        const writeIdx = (controlIdx === 0) ? 1 : 0;
+        const controlLm = handInfo[controlIdx].lm;
+        const writeLm = handInfo[writeIdx].lm;
+
+        const g = ctrlGesture(controlLm);
+
+        const p8 = landmarkToCanvas(writeLm[8], videoW, videoH, tf);
+        const p12 = landmarkToCanvas(writeLm[12], videoW, videoH, tf);
+        const mid = { x:(p8.x+p12.x)*0.5, y:(p8.y+p12.y)*0.5 };
+
+        if(ctrlMode === CTRL.WRITING){
+          if(g === "index" || g === "indexmiddle"){
+            ctrlMode = CTRL.PAUSED;
+            prevCtrlGesture = g;
+            resetStroke();
+            stateText = (g==="indexmiddle") ? "停笔（食指+中指）" : "停笔（食指）";
+            drawPenTipDot(mid);
+          }else if(g === "fist"){
+            if(prevPt){
+              const dd = Math.hypot(mid.x - prevPt.x, mid.y - prevPt.y);
+              if(dd < DEBOUNCE_PX * DPR){
+                drawPenTipDot(mid);
+                stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+                prevCtrlGesture = g;
+                setState(stateText);
+                syncSelText();
+                rafId=requestAnimationFrame(loop);
+                return;
+              }
+            }
+
+            if(!prevPt){
+              addStrokePoint(mid, penW, penColor);
+            }else{
+              addStrokePointResampled(prevPt, mid, penW, penColor);
+            }
+
+            drawPenTipDot(mid);
+
+            stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+            prevCtrlGesture = g;
+          }else{
+            resetStroke();
+            prevCtrlGesture = g;
+            stateText = "停止（控制手非拳头）";
+          }
+        }
+        else if(ctrlMode === CTRL.PAUSED){
+          resetStroke();
+          drawPenTipDot(mid);
+
+          const undoEdge = (prevCtrlGesture !== "indexmiddle" && g === "indexmiddle" && (now - lastUndoTs) > UNDO_COOLDOWN_MS);
+          if(undoEdge){
+            lastUndoTs = now;
+            doUndo();
+            stateText = "回退（停笔：食指+中指）";
+            prevCtrlGesture = g;
+          }else if(g === "fist"){
+            ctrlMode = CTRL.RESUME_DELAY;
+            resumeStartTs = now;
+            prevCtrlGesture = g;
+            stateText = "等待（判断继续写字）";
+          }else{
+            prevCtrlGesture = g;
+            stateText = (g==="index") ? "停笔（食指）" : (g==="indexmiddle" ? "停笔（食指+中指）" : "停笔");
+          }
+        }
+        else if(ctrlMode === CTRL.RESUME_DELAY){
+          resetStroke();
+          drawPenTipDot(mid);
+
+          const dt = now - resumeStartTs;
+          if(dt >= RESUME_DELAY_MS && g === "fist"){
+            ctrlMode = CTRL.WRITING;
+            prevCtrlGesture = g;
+            stateText = "继续写字";
+          }else if(g === "index" || g === "indexmiddle"){
+            ctrlMode = CTRL.PAUSED;
+            prevCtrlGesture = g;
+            stateText = "停笔";
+          }else{
+            prevCtrlGesture = g;
+            stateText = "等待";
+          }
+        }else{
+          ctrlMode = CTRL.IDLE;
+          prevCtrlGesture = g;
+          stateText = "等待手势";
+        }
+      }
+      else if(handInfo.length === 1){
+        writingSession.active=false;
+        writingSession.controlLabel=null;
+        ctrlMode = CTRL.IDLE;
+        prevCtrlGesture="none";
+
+        const lm = handInfo[0].lm;
+        if(isIndexMiddleOnly(lm)){
+          const tip = landmarkToCanvas(lm[8], videoW, videoH, tf);
+          stateText = "橡皮擦（单手：食指+中指）";
+
+          if(prevPt){
+            const dd = Math.hypot(tip.x - prevPt.x, tip.y - prevPt.y);
+            if(dd < DEBOUNCE_PX * DPR){
+              setState(stateText);
+              syncSelText();
+              rafId=requestAnimationFrame(loop);
+              return;
+            }
+          }
+
+          if(!prevPt){
+            pushUndoSnapshot();
+            prevPt = {x:tip.x,y:tip.y};
+          }
+
+          const dx=tip.x-prevPt.x, dy=tip.y-prevPt.y;
+          const dist=Math.hypot(dx,dy);
+          const n=Math.max(1, Math.floor(dist/INTERP_STEP));
+          for(let i=1;i<=n;i++){
+            const t=i/n;
+            eraseAt({ x:prevPt.x+dx*t, y:prevPt.y+dy*t });
+          }
+          prevPt = {x:tip.x,y:tip.y};
+        }else{
+          stateText = "停止（单手非橡皮手势）";
+          resetStroke();
+        }
+      }
+
+      setState(stateText);
+      syncSelText();
+      rafId=requestAnimationFrame(loop);
+    }
+
+    async function main(){
+      try{
+        penColor = "#30d158";
+        setActiveColorBtn(penColor);
+        setActiveTextColorBtn(textColor);
+        const rgb = hexToRgb(penColor);
+        const hsv = rgbToHsv(rgb.r, rgb.g, rgb.b);
+        H=hsv.h; S=hsv.s; V=hsv.v;
+        renderHue(); renderSV(); setBgButtons(); syncSelText();
+
+        await initMediaPipe();
+        await openCamera();
+        loop();
+      }catch(e){
+        console.error(e);
+        const msg=String(e).toLowerCase();
+        if(msg.includes("permission") || msg.includes("denied")) setState("摄像头权限被拒绝（请在地址栏相机权限里允许）");
+        else if(msg.includes("hand_landmarker.task")) setState("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
+        else setState("初始化失败（网络/CDN/WASM，打开控制台看第一条报错）");
+      }
+    }
+
+    window.addEventListener("beforeunload", ()=>{
+      if(rafId) cancelAnimationFrame(rafId);
+      if(stream) stream.getTracks().forEach(t=>t.stop());
+    });
+    window.addEventListener("resize", ()=>{ resizeCanvasesToPanel(); });
+
+    main();
+  </script>
 </body>
 </html>
