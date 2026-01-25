@@ -173,8 +173,8 @@
     <div class="left">
       <div class="box">
         <p class="boxTitle">功能说明</p>
-        <p class="help">写字：双手且控制手为拳头时，另一只手写字；笔尖=写字手(8,12)中点；曲线=二次曲线平滑+速度自适应。
-停笔：写字时，控制手食指伸直进入停笔（断笔，不画线）。
+        <p class="help">写字：双手且控制手为拳头时，另一只手写字；笔尖=写字手(8,12)中点；无平滑，仅简单去抖+重采样+二次曲线。
+停笔：写字时，控制手食指伸直进入停笔（断笔，不画线），停笔仍显示白色笔尖点。
 回退：停笔时，控制手食指+中指同时伸直触发一次回退（最多10步，边沿触发+冷却）。
 防打架：停笔回写字（食指→拳头）加极短等待窗口。
 橡皮擦：单手食指+中指同时伸直启用，中心=食指尖(8)，半径可调。
@@ -306,11 +306,11 @@
       resetStroke();
     });
 
-    const BASE_ALPHA_MIN = 0.14;
-    const BASE_ALPHA_MAX = 0.72;
-    const ALPHA_SPEED_GAIN = 0.018;
     const HOLD_MS = 420;
     const INTERP_STEP = 1.0;
+
+    // 简单去抖阈值：越大越稳，但越容易“断”；建议 1.0~3.0 之间自己试
+    const DEBOUNCE_PX = 1.6;
 
     let eraserR = Number(eraserRange.value);
 
@@ -358,26 +358,11 @@
       return { x: vx * tf.s + tf.dx, y: vy * tf.s + tf.dy };
     }
 
-    let smoothPt=null;
-    let smoothTs=0;
-    let prevSeenTs=0;
-
-    function smoothPoint(pt, now){
-      if(!smoothPt){ smoothPt={x:pt.x,y:pt.y}; smoothTs=now; return smoothPt; }
-      const dt = Math.max(1, now - smoothTs);
-      const dx = pt.x - smoothPt.x, dy = pt.y - smoothPt.y;
-      const dist = Math.hypot(dx,dy);
-      const speed = dist / dt;
-      const alpha = clamp(BASE_ALPHA_MIN + speed*1000*ALPHA_SPEED_GAIN/1000, BASE_ALPHA_MIN, BASE_ALPHA_MAX);
-      smoothPt.x = smoothPt.x + dx * alpha;
-      smoothPt.y = smoothPt.y + dy * alpha;
-      smoothTs = now;
-      return smoothPt;
-    }
-
-    let prevPt=null;
-    let prevMid=null;
-    function resetStroke(){ prevPt=null; prevMid=null; smoothPt=null; }
+    // 二次曲线笔画状态
+    let prevPt=null;      // 上一个采样点
+    let prevMid=null;     // 上一个中点
+    let lastSeenTs=0;
+    function resetStroke(){ prevPt=null; prevMid=null; }
 
     function pushUndoSnapshot(){
       try{
@@ -636,6 +621,7 @@
       setState("已清空");
     });
 
+    // HSV
     function hsvToRgb(h,s,v){
       const c=v*s;
       const x=c*(1-Math.abs((h/60)%2-1));
@@ -754,30 +740,30 @@
     });
     window.addEventListener("mouseup",()=>{ draggingSV=false; draggingH=false; });
 
+    // 骨架绘制：全黑；手掌线更细
     function drawSkeleton(handLm, videoW, videoH, tf){
       const pts = handLm.map(p => landmarkToCanvas(p, videoW, videoH, tf));
-      const palmPts = new Set([0,5,9,13,17]);
 
       const PALM_EDGES = [[0,5],[5,9],[9,13],[13,17],[17,0]];
       const FINGER_EDGES = [
         [0,1],[1,2],[2,3],[3,4],
-        [5,6],[6,7],[7,8],
-        [9,10],[10,11],[11,12],
-        [13,14],[14,15],[15,16],
-        [17,18],[18,19],[19,20],
-        [5,9],[9,13],[13,17]
+        [0,5],[5,6],[6,7],[7,8],
+        [5,9],[9,10],[10,11],[11,12],
+        [9,13],[13,14],[14,15],[15,16],
+        [13,17],[17,18],[18,19],[19,20]
       ];
 
       vctx.save();
       vctx.lineCap="round";
       vctx.lineJoin="round";
 
-      const lineW = 5.0 * DPR;
-      const dotR_palm = 7.0 * DPR;
-      const dotR_finger = 6.0 * DPR;
+      const palmLineW = 3.2 * DPR;
+      const fingerLineW = 5.0 * DPR;
+      const dotR = 6.2 * DPR;
 
-      vctx.strokeStyle = "rgba(0,0,0,0.92)";
-      vctx.lineWidth = lineW;
+      // 手掌线：黑、细
+      vctx.strokeStyle = "rgba(0,0,0,0.95)";
+      vctx.lineWidth = palmLineW;
       vctx.beginPath();
       for(const [a,b] of PALM_EDGES){
         const pa=pts[a], pb=pts[b];
@@ -786,8 +772,9 @@
       }
       vctx.stroke();
 
-      vctx.strokeStyle = "rgba(255,255,255,0.90)";
-      vctx.lineWidth = lineW;
+      // 手指线：黑、稍粗
+      vctx.strokeStyle = "rgba(0,0,0,0.95)";
+      vctx.lineWidth = fingerLineW;
       vctx.beginPath();
       for(const [a,b] of FINGER_EDGES){
         const pa=pts[a], pb=pts[b];
@@ -796,27 +783,21 @@
       }
       vctx.stroke();
 
-      for(let i=0;i<pts.length;i++){
-        const p=pts[i];
-        if(palmPts.has(i)){
-          vctx.fillStyle="rgba(0,0,0,0.95)";
-          vctx.beginPath();
-          vctx.arc(p.x,p.y,dotR_palm,0,Math.PI*2);
-          vctx.fill();
-          vctx.strokeStyle="rgba(255,255,255,0.35)";
-          vctx.lineWidth=2*DPR;
-          vctx.stroke();
-        }else{
-          vctx.fillStyle="rgba(255,255,255,0.92)";
-          vctx.beginPath();
-          vctx.arc(p.x,p.y,dotR_finger,0,Math.PI*2);
-          vctx.fill();
-        }
+      // 点：全黑（加一点白描边，保证在深色画面也能看见）
+      for(const p of pts){
+        vctx.fillStyle="rgba(0,0,0,0.98)";
+        vctx.beginPath();
+        vctx.arc(p.x,p.y,dotR,0,Math.PI*2);
+        vctx.fill();
+        vctx.strokeStyle="rgba(255,255,255,0.25)";
+        vctx.lineWidth=2*DPR;
+        vctx.stroke();
       }
 
       vctx.restore();
     }
 
+    // 白色笔尖点（写字+停笔都显示）
     function drawPenTipDot(pt){
       if(selecting) return;
       uctx.save();
@@ -885,18 +866,18 @@
 
       const blockGesture = selecting;
       if(!hands.length){
-        if(now - prevSeenTs > HOLD_MS) resetStroke();
+        if(now - lastSeenTs > HOLD_MS) resetStroke();
         writingSession.active=false;
         writingSession.controlLabel=null;
         ctrlMode = CTRL.IDLE;
         prevCtrlGesture="none";
         setState(selecting ? "选择区域（手势暂停）" : "未检测到手");
         renderSelectUI();
-        prevSeenTs = now;
+        lastSeenTs = now;
         rafId=requestAnimationFrame(loop);
         return;
       }
-      prevSeenTs = now;
+      lastSeenTs = now;
 
       if(blockGesture){
         setState("选择区域（手势暂停）");
@@ -908,6 +889,7 @@
       const handInfo = hands.map((lm,i)=>({ lm, label:getHandLabel(result,i) }));
       let stateText = "等待手势";
 
+      // 每帧先清 UI，再根据状态补画白点
       renderSelectUI();
 
       if(handInfo.length >= 2){
@@ -929,7 +911,12 @@
         const controlLm = handInfo[controlIdx].lm;
         const writeLm = handInfo[writeIdx].lm;
 
-        const g = ctrlGesture(controlLm);
+        const g = ctrlGesture(controlLm); // fist/index/indexmiddle/other
+
+        // 计算笔尖（写字/停笔都用同一逻辑：写字手 8/12 中点）
+        const p8 = landmarkToCanvas(writeLm[8], videoW, videoH, tf);
+        const p12 = landmarkToCanvas(writeLm[12], videoW, videoH, tf);
+        const mid = { x:(p8.x+p12.x)*0.5, y:(p8.y+p12.y)*0.5 };
 
         if(ctrlMode === CTRL.WRITING){
           if(g === "index" || g === "indexmiddle"){
@@ -937,19 +924,29 @@
             prevCtrlGesture = g;
             resetStroke();
             stateText = (g==="indexmiddle") ? "停笔（食指+中指）" : "停笔（食指）";
+            drawPenTipDot(mid);
           }else if(g === "fist"){
-            const p8 = landmarkToCanvas(writeLm[8], videoW, videoH, tf);
-            const p12 = landmarkToCanvas(writeLm[12], videoW, videoH, tf);
-            const mid = { x:(p8.x+p12.x)*0.5, y:(p8.y+p12.y)*0.5 };
-            const sp = smoothPoint(mid, now);
-
-            if(!prevPt){
-              addStrokePoint(sp, penW, penColor);
-            }else{
-              addStrokePointResampled(prevPt, sp, penW, penColor);
+            // 简单去抖：移动太小就不画（但仍显示白点）
+            if(prevPt){
+              const dd = Math.hypot(mid.x - prevPt.x, mid.y - prevPt.y);
+              if(dd < DEBOUNCE_PX * DPR){
+                drawPenTipDot(mid);
+                stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+                prevCtrlGesture = g;
+                setState(stateText);
+                syncSelText();
+                rafId=requestAnimationFrame(loop);
+                return;
+              }
             }
 
-            drawPenTipDot(sp);
+            if(!prevPt){
+              addStrokePoint(mid, penW, penColor);
+            }else{
+              addStrokePointResampled(prevPt, mid, penW, penColor);
+            }
+
+            drawPenTipDot(mid);
 
             stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
             prevCtrlGesture = g;
@@ -961,6 +958,9 @@
         }
         else if(ctrlMode === CTRL.PAUSED){
           resetStroke();
+          // 停笔也显示白点
+          drawPenTipDot(mid);
+
           const undoEdge = (prevCtrlGesture !== "indexmiddle" && g === "indexmiddle" && (now - lastUndoTs) > UNDO_COOLDOWN_MS);
           if(undoEdge){
             lastUndoTs = now;
@@ -979,8 +979,9 @@
         }
         else if(ctrlMode === CTRL.RESUME_DELAY){
           resetStroke();
-          const dt = now - resumeStartTs;
+          drawPenTipDot(mid);
 
+          const dt = now - resumeStartTs;
           if(dt >= RESUME_DELAY_MS && g === "fist"){
             ctrlMode = CTRL.WRITING;
             prevCtrlGesture = g;
@@ -1008,22 +1009,32 @@
         const lm = handInfo[0].lm;
         if(isIndexMiddleOnly(lm)){
           const tip = landmarkToCanvas(lm[8], videoW, videoH, tf);
-          const sp = smoothPoint(tip, now);
           stateText = "橡皮擦（单手：食指+中指）";
+
+          // 简单去抖：移动太小不擦
+          if(prevPt){
+            const dd = Math.hypot(tip.x - prevPt.x, tip.y - prevPt.y);
+            if(dd < DEBOUNCE_PX * DPR){
+              setState(stateText);
+              syncSelText();
+              rafId=requestAnimationFrame(loop);
+              return;
+            }
+          }
 
           if(!prevPt){
             pushUndoSnapshot();
-            prevPt = {x:sp.x,y:sp.y};
+            prevPt = {x:tip.x,y:tip.y};
           }
 
-          const dx=sp.x-prevPt.x, dy=sp.y-prevPt.y;
+          const dx=tip.x-prevPt.x, dy=tip.y-prevPt.y;
           const dist=Math.hypot(dx,dy);
           const n=Math.max(1, Math.floor(dist/INTERP_STEP));
           for(let i=1;i<=n;i++){
             const t=i/n;
             eraseAt({ x:prevPt.x+dx*t, y:prevPt.y+dy*t });
           }
-          prevPt = {x:sp.x,y:sp.y};
+          prevPt = {x:tip.x,y:tip.y};
         }else{
           stateText = "停止（单手非橡皮手势）";
           resetStroke();
