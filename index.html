@@ -495,8 +495,9 @@
     });
 
     const HOLD_MS = 420;
-    const INTERP_STEP = 1.0;
-    const DEBOUNCE_PX = 1.6;
+    const INTERP_STEP = 2.0;
+    const DEBOUNCE_PX = 3.5;
+    const SMOOTH_FACTOR = 0.25;
 
     let eraserR = Number(eraserRange.value);
 
@@ -560,7 +561,13 @@
     let prevPt=null;
     let prevMid=null;
     let lastSeenTs=0;
-    function resetStroke(){ prevPt=null; prevMid=null; }
+    let smoothedPt=null;
+    
+    function resetStroke(){ 
+      prevPt=null; 
+      prevMid=null; 
+      smoothedPt=null;
+    }
 
     function pushUndoSnapshot(){
       try{
@@ -586,13 +593,21 @@
     }
 
     function addStrokePoint(p, width, color){
+      if(!smoothedPt){
+        smoothedPt = {x:p.x, y:p.y};
+      }else{
+        smoothedPt.x = smoothedPt.x + (p.x - smoothedPt.x) * SMOOTH_FACTOR;
+        smoothedPt.y = smoothedPt.y + (p.y - smoothedPt.y) * SMOOTH_FACTOR;
+      }
+      
       if(!prevPt){
         pushUndoSnapshot();
-        prevPt = {x:p.x,y:p.y};
-        prevMid = {x:p.x,y:p.y};
+        prevPt = {x:smoothedPt.x, y:smoothedPt.y};
+        prevMid = {x:smoothedPt.x, y:smoothedPt.y};
         return;
       }
-      const mid = { x:(prevPt.x+p.x)*0.5, y:(prevPt.y+p.y)*0.5 };
+      
+      const mid = { x:(prevPt.x+smoothedPt.x)*0.5, y:(prevPt.y+smoothedPt.y)*0.5 };
 
       strokeStyle(width,color);
       dctx.beginPath();
@@ -601,7 +616,7 @@
       dctx.stroke();
       dctx.restore();
 
-      prevPt = {x:p.x,y:p.y};
+      prevPt = {x:smoothedPt.x, y:smoothedPt.y};
       prevMid = mid;
     }
 
@@ -1004,15 +1019,30 @@
       if(!selecting || !sel) return;
       const s=normalizeSel(sel);
       if(!s) return;
+      
       const w=Math.max(1, Math.round(s.x1-s.x0));
       const h=Math.max(1, Math.round(s.y1-s.y0));
+      
+      const scale = 2;
+      const exportW = w * scale;
+      const exportH = h * scale;
+      
       const off=document.createElement("canvas");
-      off.width=w; off.height=h;
+      off.width=exportW; 
+      off.height=exportH;
       const octx=off.getContext("2d");
+      
+      octx.imageSmoothingEnabled = true;
+      octx.imageSmoothingQuality = 'high';
+      
+      octx.scale(scale, scale);
+      
       octx.fillStyle=bgColor;
       octx.fillRect(0,0,w,h);
+      
       octx.drawImage(drawCanvas, s.x0,s.y0,w,h, 0,0,w,h);
       octx.drawImage(textCanvas, s.x0,s.y0,w,h, 0,0,w,h);
+      
       const ts=new Date();
       const name=`note_${ts.getFullYear()}${String(ts.getMonth()+1).padStart(2,"0")}${String(ts.getDate()).padStart(2,"0")}_${String(ts.getHours()).padStart(2,"0")}${String(ts.getMinutes()).padStart(2,"0")}${String(ts.getSeconds()).padStart(2,"0")}.png`;
       off.toBlob((blob)=>{ if(blob) downloadBlob(blob,name); }, "image/png");
