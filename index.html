@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>hand_view_whiteboard</title>
+  <title>Hand Gesture Whiteboard</title>
   <style>
     :root{
       --bg:#000; --fg:#eee;
@@ -255,19 +255,19 @@
   <div class="app">
     <div class="left">
       <div class="box">
-        <p class="boxTitle">功能说明</p>
-        <p class="help">写字：双手且控制手为拳头时，另一只手写字；笔尖=写字手(8,12)中点；无平滑，仅简单去抖+重采样+二次曲线。
-停笔：写字时，控制手食指伸直进入停笔（断笔，不画线），停笔仍显示白色笔尖点。
-回退：停笔时，控制手食指+中指同时伸直触发一次回退（最多10步，边沿触发+冷却）。
-防打架：停笔回写字（食指→拳头）加极短等待窗口。
-橡皮擦：单手食指+中指同时伸直可用，中心=食指尖(8)，半径可调。
-导出：选择区域导出PNG（背景白/黑），选择模式暂停手势。</p>
+        <p class="boxTitle">Instructions</p>
+        <p class="help">Writing: Both hands, control hand in fist, other hand writes; Pen tip = midpoint of writing hand (8,12); Simple smoothing with debounce + resampling + quadratic curves.
+Pause: While writing, extend control hand index finger to pause (no line drawn), white pen tip still visible.
+Undo: While paused, extend index + middle finger simultaneously to undo (max 10 steps, edge trigger + cooldown).
+Anti-conflict: Pause to write (index→fist) has short wait window.
+Eraser: Single hand index + middle finger extended, center = index tip (8), adjustable radius.
+Export: Select region to export PNG (white/black background), selection mode pauses gestures.</p>
         <div class="draftArea" id="draftArea">
           <div class="draftHeader">
-            <span class="draftTitle">草稿区域（自动保存）</span>
-            <button class="expandBtn" id="expandBtn">展开</button>
+            <span class="draftTitle">Draft Area (Auto-save)</span>
+            <button class="expandBtn" id="expandBtn">Expand</button>
           </div>
-          <textarea class="draftTextarea" id="draftTextarea" placeholder="在此输入笔记、想法或草稿内容...&#10;内容会自动保存到本地"></textarea>
+          <textarea class="draftTextarea" id="draftTextarea" placeholder="Enter notes, ideas or draft content here...&#10;Content is automatically saved locally"></textarea>
         </div>
       </div>
     </div>
@@ -280,91 +280,91 @@
         <canvas id="uiCanvas"></canvas>
       </div>
       <div class="statusbar">
-        <span class="badge" id="state">判断：初始化中...</span>
-        <span class="badge" id="sel">选择：--</span>
+        <span class="badge" id="state">Status: Initializing...</span>
+        <span class="badge" id="sel">Selection: --</span>
       </div>
     </div>
 
     <div class="right">
       <div class="box">
-        <p class="boxTitle">颜色 / 笔宽 / 导出</p>
+        <p class="boxTitle">Color / Pen Width / Export</p>
 
         <div class="pickerWrap">
           <div class="pickerTop">
-            <span style="font-size:13px;color:rgba(255,255,255,0.85);">颜色</span>
+            <span style="font-size:13px;color:rgba(255,255,255,0.85);">Color</span>
             <div class="swatch" id="swatch"></div>
             <span class="hexBadge" id="colText">#30d158</span>
           </div>
           <canvas id="svCanvas" width="640" height="340"></canvas>
           <canvas id="hCanvas" width="640" height="36"></canvas>
-          <p class="pickerHint">提示：上方选择明度/饱和度，下方选择色相</p>
+          <p class="pickerHint">Tip: Top for brightness/saturation, bottom for hue</p>
         </div>
 
         <div class="row">
-          <button class="btn" id="cBlack" type="button" data-col="#000000">黑</button>
-          <button class="btn" id="cWhite" type="button" data-col="#ffffff">白</button>
-          <button class="btn" id="cRed" type="button" data-col="#ff3b30">红</button>
-          <button class="btn" id="cYellow" type="button" data-col="#ffd60a">黄</button>
-          <button class="btn" id="cBlue" type="button" data-col="#0a84ff">蓝</button>
-          <button class="btn" id="cGreen" type="button" data-col="#30d158">绿</button>
+          <button class="btn" id="cBlack" type="button" data-col="#000000">Black</button>
+          <button class="btn" id="cWhite" type="button" data-col="#ffffff">White</button>
+          <button class="btn" id="cRed" type="button" data-col="#ff3b30">Red</button>
+          <button class="btn" id="cYellow" type="button" data-col="#ffd60a">Yellow</button>
+          <button class="btn" id="cBlue" type="button" data-col="#0a84ff">Blue</button>
+          <button class="btn" id="cGreen" type="button" data-col="#30d158">Green</button>
         </div>
 
         <div class="ctl">
-          <label>笔宽</label>
+          <label>Pen</label>
           <input id="penRange" type="range" min="1" max="30" step="0.5" value="2.5" />
           <span class="badge" id="penVal">2.5</span>
         </div>
 
         <div class="ctl">
-          <label>橡皮</label>
+          <label>Eraser</label>
           <input id="eraserRange" type="range" min="6" max="80" step="1" value="26" />
           <span class="badge" id="eraserVal">26</span>
         </div>
 
         <div class="row">
-          <button class="btn" id="clearBtn" type="button">清空</button>
-          <button class="btn on" id="mirrorBtn" type="button">镜像：开</button>
-          <button class="btn on" id="skeletonBtn" type="button">骨架：显示</button>
+          <button class="btn" id="clearBtn" type="button">Clear</button>
+          <button class="btn on" id="mirrorBtn" type="button">Mirror: On</button>
+          <button class="btn on" id="skeletonBtn" type="button">Skeleton: Show</button>
         </div>
 
         <div class="row">
-          <button class="btn" id="selectBtn" type="button">选择区域导出</button>
-          <button class="btn" id="bgWhiteBtn" type="button">背景：白</button>
-          <button class="btn" id="bgBlackBtn" type="button">背景：黑</button>
+          <button class="btn" id="selectBtn" type="button">Select Region</button>
+          <button class="btn" id="bgWhiteBtn" type="button">BG: White</button>
+          <button class="btn" id="bgBlackBtn" type="button">BG: Black</button>
         </div>
 
         <div class="row">
-          <button class="btn" id="exportBtn" type="button" disabled>导出 PNG</button>
-          <button class="btn" id="cancelSelectBtn" type="button" disabled>取消选择</button>
+          <button class="btn" id="exportBtn" type="button" disabled>Export PNG</button>
+          <button class="btn" id="cancelSelectBtn" type="button" disabled>Cancel</button>
         </div>
 
-        <p class="boxTitle" style="margin-top:10px;">文字工具</p>
+        <p class="boxTitle" style="margin-top:10px;">Text Tool</p>
 
         <div class="row">
-          <button class="btn" id="addTextBtn" type="button">添加文字</button>
+          <button class="btn" id="addTextBtn" type="button">Add Text</button>
         </div>
 
         <div class="ctl">
-          <label>字号</label>
+          <label>Size</label>
           <input id="fontSizeRange" type="range" min="12" max="72" step="2" value="32" />
           <span class="badge" id="fontSizeVal">32</span>
         </div>
 
         <div class="row">
-          <button class="btn" id="tBlack" type="button" data-col="#000000">黑</button>
-          <button class="btn" id="tWhite" type="button" data-col="#ffffff">白</button>
-          <button class="btn on" id="tRed" type="button" data-col="#ff3b30">红</button>
-          <button class="btn" id="tYellow" type="button" data-col="#ffd60a">黄</button>
-          <button class="btn" id="tBlue" type="button" data-col="#0a84ff">蓝</button>
-          <button class="btn" id="tGreen" type="button" data-col="#30d158">绿</button>
+          <button class="btn" id="tBlack" type="button" data-col="#000000">Black</button>
+          <button class="btn" id="tWhite" type="button" data-col="#ffffff">White</button>
+          <button class="btn on" id="tRed" type="button" data-col="#ff3b30">Red</button>
+          <button class="btn" id="tYellow" type="button" data-col="#ffd60a">Yellow</button>
+          <button class="btn" id="tBlue" type="button" data-col="#0a84ff">Blue</button>
+          <button class="btn" id="tGreen" type="button" data-col="#30d158">Green</button>
         </div>
 
         <div class="ctl">
-          <label>字体</label>
+          <label>Font</label>
           <select id="fontSelect">
-            <option value="PingFang SC, Microsoft YaHei, sans-serif">中文（黑体）</option>
-            <option value="Arial, Helvetica, sans-serif">英文（Arial）</option>
-            <option value="Roboto, sans-serif">英文（Roboto）</option>
+            <option value="PingFang SC, Microsoft YaHei, sans-serif">Chinese (Heiti)</option>
+            <option value="Arial, Helvetica, sans-serif">English (Arial)</option>
+            <option value="Roboto, sans-serif">English (Roboto)</option>
           </select>
         </div>
       </div>
@@ -432,7 +432,7 @@
         const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
         if(saved) draftTextarea.value = saved;
       }catch(e){
-        console.warn("无法加载草稿:", e);
+        console.warn("Cannot load draft:", e);
       }
     }
 
@@ -440,7 +440,7 @@
       try{
         localStorage.setItem(DRAFT_STORAGE_KEY, draftTextarea.value);
       }catch(e){
-        console.warn("无法保存草稿:", e);
+        console.warn("Cannot save draft:", e);
       }
     }
 
@@ -451,12 +451,12 @@
       if(isDraftExpanded){
         overlay.classList.add("active");
         draftArea.classList.add("expanded");
-        expandBtn.textContent = "收起";
+        expandBtn.textContent = "Collapse";
         draftTextarea.focus();
       }else{
         overlay.classList.remove("active");
         draftArea.classList.remove("expanded");
-        expandBtn.textContent = "展开";
+        expandBtn.textContent = "Expand";
       }
     });
 
@@ -465,12 +465,12 @@
         isDraftExpanded = false;
         overlay.classList.remove("active");
         draftArea.classList.remove("expanded");
-        expandBtn.textContent = "展开";
+        expandBtn.textContent = "Expand";
       }
     });
 
-    function setState(t){ stateEl.textContent = "判断：" + t; }
-    function setSel(t){ selEl.textContent = "选择：" + t; }
+    function setState(t){ stateEl.textContent = "Status: " + t; }
+    function setSel(t){ selEl.textContent = "Selection: " + t; }
 
     let stream=null, rafId=null;
     let vision=null, FilesetResolver=null, HandLandmarker=null;
@@ -483,14 +483,14 @@
 
     mirrorBtn.addEventListener("click", ()=>{
       mirrorOn = !mirrorOn;
-      mirrorBtn.textContent = mirrorOn ? "镜像：开" : "镜像：关";
+      mirrorBtn.textContent = mirrorOn ? "Mirror: On" : "Mirror: Off";
       mirrorBtn.classList.toggle("on", mirrorOn);
       resetStroke();
     });
 
     skeletonBtn.addEventListener("click", ()=>{
       skeletonOn = !skeletonOn;
-      skeletonBtn.textContent = skeletonOn ? "骨架：显示" : "骨架：隐藏";
+      skeletonBtn.textContent = skeletonOn ? "Skeleton: Show" : "Skeleton: Hide";
       skeletonBtn.classList.toggle("on", skeletonOn);
     });
 
@@ -701,7 +701,7 @@
       colText.textContent = penColor.toLowerCase();
       swatch.style.background = penColor;
       fontSizeVal.textContent = String(textFontSize);
-      setSel(`笔宽 ${penW.toFixed(1)} | 橡皮 ${Math.round(eraserR)} | 颜色 ${penColor.toLowerCase()} | 背景 ${bgColor==="#ffffff"?"白":"黑"} | 镜像 ${mirrorOn?"开":"关"} | 选择模式 ${selecting?"开":"关"} | 文字模式 ${textMode?"开":"关"}`);
+      setSel(`Pen ${penW.toFixed(1)} | Eraser ${Math.round(eraserR)} | Color ${penColor.toLowerCase()} | BG ${bgColor==="#ffffff"?"White":"Black"} | Mirror ${mirrorOn?"On":"Off"} | Select ${selecting?"On":"Off"} | Text ${textMode?"On":"Off"}`);
     }
 
     penRange.addEventListener("input", ()=>{ penW = Number(penRange.value); syncSelText(); });
@@ -770,7 +770,7 @@
       exportBtn.disabled=true;
       cancelSelectBtn.disabled=false;
       selectBtn.classList.add("on");
-      setState("选择区域（手势暂停）");
+      setState("Select region (gestures paused)");
       renderSelectUI();
       syncSelText();
     }
@@ -798,7 +798,7 @@
         renderAllTexts();
         renderTextBoxUI();
         movingTextBox = null;
-        setState("文字框已移动");
+        setState("Text box moved");
         return;
       }
       
@@ -880,7 +880,7 @@
       textMode = !textMode;
       addTextBtn.classList.toggle("on", textMode);
       if(textMode){
-        setState("拖动选择文字区域");
+        setState("Drag to select text area");
       }else{
         textBoxDrag = null;
         movingTextBox = null;
@@ -972,12 +972,12 @@
       dialog.style.minWidth = "300px";
       
       dialog.innerHTML = `
-        <div style="color:#eee;font-size:14px;margin-bottom:15px;">文字框操作</div>
-        <textarea id="textBoxInput" style="width:100%;height:100px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#eee;padding:10px;font-size:13px;font-family:inherit;resize:none;margin-bottom:15px;" placeholder="输入文字内容...">${box.text || ""}</textarea>
+        <div style="color:#eee;font-size:14px;margin-bottom:15px;">Text Box Options</div>
+        <textarea id="textBoxInput" style="width:100%;height:100px;background:rgba(0,0,0,0.4);border:1px solid rgba(255,255,255,0.15);border-radius:8px;color:#eee;padding:10px;font-size:13px;font-family:inherit;resize:none;margin-bottom:15px;" placeholder="Enter text content...">${box.text || ""}</textarea>
         <div style="display:flex;gap:10px;">
-          <button id="textBoxMove" style="flex:1;padding:8px;background:rgba(100,200,255,0.2);border:1px solid rgba(100,200,255,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">移动</button>
-          <button id="textBoxDelete" style="flex:1;padding:8px;background:rgba(255,100,100,0.2);border:1px solid rgba(255,100,100,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">删除</button>
-          <button id="textBoxConfirm" style="flex:1;padding:8px;background:rgba(100,255,100,0.2);border:1px solid rgba(100,255,100,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">确定</button>
+          <button id="textBoxMove" style="flex:1;padding:8px;background:rgba(100,200,255,0.2);border:1px solid rgba(100,200,255,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">Move</button>
+          <button id="textBoxDelete" style="flex:1;padding:8px;background:rgba(255,100,100,0.2);border:1px solid rgba(255,100,100,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">Delete</button>
+          <button id="textBoxConfirm" style="flex:1;padding:8px;background:rgba(100,255,100,0.2);border:1px solid rgba(100,255,100,0.4);border-radius:8px;color:#eee;cursor:pointer;font-size:13px;">Confirm</button>
         </div>
       `;
       
@@ -1002,7 +1002,7 @@
       document.getElementById("textBoxMove").onclick = ()=>{
         movingTextBox = box;
         document.body.removeChild(dialog);
-        setState("拖动文字框到新位置");
+        setState("Drag text box to new position");
       };
     }
 
@@ -1061,7 +1061,7 @@
       writingSession.controlLabel=null;
       ctrlMode = CTRL.IDLE;
       prevCtrlGesture="none";
-      setState("已清空");
+      setState("Cleared");
     });
 
     function hsvToRgb(h,s,v){
@@ -1251,7 +1251,7 @@
     }
 
     async function initMediaPipe(){
-      setState("加载 MediaPipe...");
+      setState("Loading MediaPipe...");
       vision = await import("https://unpkg.com/@mediapipe/tasks-vision@0.10.14");
       ({ FilesetResolver, HandLandmarker } = vision);
       const fileset = await FilesetResolver.forVisionTasks("https://unpkg.com/@mediapipe/tasks-vision@0.10.14/wasm");
@@ -1263,18 +1263,18 @@
         minHandPresenceConfidence:0.5,
         minTrackingConfidence:0.5
       });
-      setState("MediaPipe 就绪");
+      setState("MediaPipe ready");
     }
 
     async function openCamera(){
-      setState("请求摄像头权限中...");
+      setState("Requesting camera permission...");
       stream = await navigator.mediaDevices.getUserMedia({
         video:{ facingMode:"user", width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30,max:60} },
         audio:false
       });
       video.srcObject = stream;
       await video.play();
-      setState("运行中");
+      setState("Running");
     }
 
     function loop(){
@@ -1313,7 +1313,7 @@
         writingSession.controlLabel=null;
         ctrlMode = CTRL.IDLE;
         prevCtrlGesture="none";
-        setState(selecting ? "选择区域（手势暂停）" : (textMode ? "拖动选择文字区域" : "未检测到手"));
+        setState(selecting ? "Select region (gestures paused)" : (textMode ? "Drag to select text area" : "No hands detected"));
         renderSelectUI();
         renderTextBoxUI();
         lastSeenTs = now;
@@ -1323,7 +1323,7 @@
       lastSeenTs = now;
 
       if(blockGesture){
-        setState(selecting ? "选择区域（手势暂停）" : "拖动选择文字区域");
+        setState(selecting ? "Select region (gestures paused)" : "Drag to select text area");
         renderSelectUI();
         renderTextBoxUI();
         rafId=requestAnimationFrame(loop);
@@ -1331,7 +1331,7 @@
       }
 
       const handInfo = hands.map((lm,i)=>({ lm, label:getHandLabel(result,i) }));
-      let stateText = "等待手势";
+      let stateText = "Waiting for gesture";
 
       renderSelectUI();
       renderTextBoxUI();
@@ -1366,14 +1366,14 @@
             ctrlMode = CTRL.PAUSED;
             prevCtrlGesture = g;
             resetStroke();
-            stateText = (g==="indexmiddle") ? "停笔（食指+中指）" : "停笔（食指）";
+            stateText = (g==="indexmiddle") ? "Paused (index+middle)" : "Paused (index)";
             drawPenTipDot(mid);
           }else if(g === "fist"){
             if(prevPt){
               const dd = Math.hypot(mid.x - prevPt.x, mid.y - prevPt.y);
               if(dd < DEBOUNCE_PX * DPR){
                 drawPenTipDot(mid);
-                stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+                stateText = `Writing (ctrl=${controlIdx+1}, write=${writeIdx+1})`;
                 prevCtrlGesture = g;
                 setState(stateText);
                 syncSelText();
@@ -1390,12 +1390,12 @@
 
             drawPenTipDot(mid);
 
-            stateText = `写字（控制手=${controlIdx+1}，输出手=${writeIdx+1}）`;
+            stateText = `Writing (ctrl=${controlIdx+1}, write=${writeIdx+1})`;
             prevCtrlGesture = g;
           }else{
             resetStroke();
             prevCtrlGesture = g;
-            stateText = "停止（控制手非拳头）";
+            stateText = "Stopped (ctrl hand not fist)";
           }
         }
         else if(ctrlMode === CTRL.PAUSED){
@@ -1406,16 +1406,16 @@
           if(undoEdge){
             lastUndoTs = now;
             doUndo();
-            stateText = "回退（停笔：食指+中指）";
+            stateText = "Undo (paused: index+middle)";
             prevCtrlGesture = g;
           }else if(g === "fist"){
             ctrlMode = CTRL.RESUME_DELAY;
             resumeStartTs = now;
             prevCtrlGesture = g;
-            stateText = "等待（判断继续写字）";
+            stateText = "Waiting (resume detection)";
           }else{
             prevCtrlGesture = g;
-            stateText = (g==="index") ? "停笔（食指）" : (g==="indexmiddle" ? "停笔（食指+中指）" : "停笔");
+            stateText = (g==="index") ? "Paused (index)" : (g==="indexmiddle" ? "Paused (index+middle)" : "Paused");
           }
         }
         else if(ctrlMode === CTRL.RESUME_DELAY){
@@ -1426,19 +1426,19 @@
           if(dt >= RESUME_DELAY_MS && g === "fist"){
             ctrlMode = CTRL.WRITING;
             prevCtrlGesture = g;
-            stateText = "继续写字";
+            stateText = "Resume writing";
           }else if(g === "index" || g === "indexmiddle"){
             ctrlMode = CTRL.PAUSED;
             prevCtrlGesture = g;
-            stateText = "停笔";
+            stateText = "Paused";
           }else{
             prevCtrlGesture = g;
-            stateText = "等待";
+            stateText = "Waiting";
           }
         }else{
           ctrlMode = CTRL.IDLE;
           prevCtrlGesture = g;
-          stateText = "等待手势";
+          stateText = "Waiting for gesture";
         }
       }
       else if(handInfo.length === 1){
@@ -1450,7 +1450,7 @@
         const lm = handInfo[0].lm;
         if(isIndexMiddleOnly(lm)){
           const tip = landmarkToCanvas(lm[8], videoW, videoH, tf);
-          stateText = "橡皮擦（单手：食指+中指）";
+          stateText = "Eraser (single hand: index+middle)";
 
           if(prevPt){
             const dd = Math.hypot(tip.x - prevPt.x, tip.y - prevPt.y);
@@ -1476,7 +1476,7 @@
           }
           prevPt = {x:tip.x,y:tip.y};
         }else{
-          stateText = "停止（单手非橡皮手势）";
+          stateText = "Stopped (single hand not eraser)";
           resetStroke();
         }
       }
@@ -1504,9 +1504,9 @@
       }catch(e){
         console.error(e);
         const msg=String(e).toLowerCase();
-        if(msg.includes("permission") || msg.includes("denied")) setState("摄像头权限被拒绝（请在地址栏相机权限里允许）");
-        else if(msg.includes("hand_landmarker.task")) setState("模型加载失败（确认 hand_landmarker.task 与 index.html 同目录且文件名一致）");
-        else setState("初始化失败（网络/CDN/WASM，打开控制台看第一条报错）");
+        if(msg.includes("permission") || msg.includes("denied")) setState("Camera permission denied (allow in address bar camera settings)");
+        else if(msg.includes("hand_landmarker.task")) setState("Model load failed (ensure hand_landmarker.task is in same directory as index.html)");
+        else setState("Init failed (network/CDN/WASM, check console for first error)");
       }
     }
 
