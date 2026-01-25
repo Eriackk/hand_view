@@ -55,13 +55,82 @@
     }
     .boxTitle{ font-size:13px; color:rgba(255,255,255,0.85); margin:0; }
     .help{ font-size:12.5px; color:var(--mut); line-height:1.6; margin:0; white-space:pre-wrap; }
-    .spacer{
+    .draftArea{
       flex:1;
       border-radius:12px;
-      border:1px dashed rgba(255,255,255,0.18);
-      background:rgba(255,255,255,0.03);
+      border:1px solid rgba(255,255,255,0.12);
+      background:rgba(255,255,255,0.04);
       min-height:180px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      padding:10px;
+      position:relative;
+      overflow:hidden;
+      transition:all 0.3s ease;
     }
+    .draftArea.expanded{
+      position:fixed;
+      top:50%;
+      left:50%;
+      transform:translate(-50%, -50%);
+      width:80vw;
+      height:80vh;
+      z-index:10000;
+      box-shadow:0 20px 60px rgba(0,0,0,0.8);
+    }
+    .draftHeader{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      padding-bottom:8px;
+      border-bottom:1px solid rgba(255,255,255,0.08);
+    }
+    .draftTitle{
+      font-size:12px;
+      color:rgba(255,255,255,0.75);
+      flex:1;
+    }
+    .expandBtn{
+      padding:4px 8px;
+      border-radius:6px;
+      background:var(--card2);
+      border:1px solid var(--bd2);
+      color:var(--fg);
+      font-size:11px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .expandBtn:hover{ background:rgba(255,255,255,0.14); }
+    .draftTextarea{
+      flex:1;
+      background:rgba(0,0,0,0.3);
+      border:1px solid rgba(255,255,255,0.08);
+      border-radius:8px;
+      color:#eee;
+      padding:10px;
+      font-size:13px;
+      font-family:inherit;
+      resize:none;
+      outline:none;
+      line-height:1.6;
+    }
+    .draftTextarea:focus{
+      border-color:rgba(255,255,255,0.18);
+      background:rgba(0,0,0,0.4);
+    }
+    .draftTextarea::placeholder{
+      color:rgba(255,255,255,0.35);
+    }
+    .overlay{
+      display:none;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.7);
+      z-index:9999;
+      backdrop-filter:blur(4px);
+    }
+    .overlay.active{ display:block; }
 
     .center{
       height:100%;
@@ -181,6 +250,8 @@
   </style>
 </head>
 <body>
+  <div class="overlay" id="overlay"></div>
+
   <div class="app">
     <div class="left">
       <div class="box">
@@ -191,7 +262,13 @@
 防打架：停笔回写字（食指→拳头）加极短等待窗口。
 橡皮擦：单手食指+中指同时伸直可用，中心=食指尖(8)，半径可调。
 导出：选择区域导出PNG（背景白/黑），选择模式暂停手势。</p>
-        <div class="spacer" title="预留区域（未来：打字等功能按钮）"></div>
+        <div class="draftArea" id="draftArea">
+          <div class="draftHeader">
+            <span class="draftTitle">草稿区域（自动保存）</span>
+            <button class="expandBtn" id="expandBtn">展开</button>
+          </div>
+          <textarea class="draftTextarea" id="draftTextarea" placeholder="在此输入笔记、想法或草稿内容...&#10;内容会自动保存到本地"></textarea>
+        </div>
       </div>
     </div>
 
@@ -341,6 +418,56 @@
     const fontSizeVal = document.getElementById("fontSizeVal");
     const fontSelect = document.getElementById("fontSelect");
     const textColorBtns = ["tBlack","tWhite","tRed","tYellow","tBlue","tGreen"].map(id => document.getElementById(id));
+
+    const draftArea = document.getElementById("draftArea");
+    const draftTextarea = document.getElementById("draftTextarea");
+    const expandBtn = document.getElementById("expandBtn");
+    const overlay = document.getElementById("overlay");
+
+    const DRAFT_STORAGE_KEY = "hand_whiteboard_draft";
+    let isDraftExpanded = false;
+
+    function loadDraft(){
+      try{
+        const saved = localStorage.getItem(DRAFT_STORAGE_KEY);
+        if(saved) draftTextarea.value = saved;
+      }catch(e){
+        console.warn("无法加载草稿:", e);
+      }
+    }
+
+    function saveDraft(){
+      try{
+        localStorage.setItem(DRAFT_STORAGE_KEY, draftTextarea.value);
+      }catch(e){
+        console.warn("无法保存草稿:", e);
+      }
+    }
+
+    draftTextarea.addEventListener("input", saveDraft);
+
+    expandBtn.addEventListener("click", ()=>{
+      isDraftExpanded = !isDraftExpanded;
+      if(isDraftExpanded){
+        overlay.classList.add("active");
+        draftArea.classList.add("expanded");
+        expandBtn.textContent = "收起";
+        draftTextarea.focus();
+      }else{
+        overlay.classList.remove("active");
+        draftArea.classList.remove("expanded");
+        expandBtn.textContent = "展开";
+      }
+    });
+
+    overlay.addEventListener("click", ()=>{
+      if(isDraftExpanded){
+        isDraftExpanded = false;
+        overlay.classList.remove("active");
+        draftArea.classList.remove("expanded");
+        expandBtn.textContent = "展开";
+      }
+    });
 
     function setState(t){ stateEl.textContent = "判断：" + t; }
     function setSel(t){ selEl.textContent = "选择：" + t; }
@@ -1196,6 +1323,8 @@
 
     async function main(){
       try{
+        loadDraft();
+        
         penColor = "#30d158";
         setActiveColorBtn(penColor);
         setActiveTextColorBtn(textColor);
